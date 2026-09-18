@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type Theme = "light" | "dark" | "system";
-export type Accent = "orange" | "yellow" | "red" | "pink" | "purple" | "blue" | "cyan" | "green";
+export type Accent = "orange" | "yellow" | "red" | "pink" | "purple" | "blue" | "cyan" | "green" | "white";
 export type Note = { id: string; title: string; subtitle: string; text: string; updated: number; pinned: boolean; folder: string; tags: string[] };
 export type Folder = { id: string; name: string; icon: string };
 

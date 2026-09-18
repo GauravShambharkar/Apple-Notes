@@ -6,7 +6,6 @@ import {
   LuBold,
   LuCheck,
   LuChevronDown,
-  LuEllipsis,
   LuFileText,
   LuFolder,
   LuList,
@@ -38,6 +37,7 @@ const accents: { name: Accent; color: string }[] = [
   { name: "blue", color: "#0a84ff" },
   { name: "cyan", color: "#64d2ff" },
   { name: "green", color: "#30d158" },
+  { name: "white", color: "#ffffff" },
 ];
 
 function dateLabel(date: number) {
@@ -146,7 +146,7 @@ function NoteList({
         <div className="notes-title-line mb-4 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
             <span className="eyebrow mb-0.5 block text-[10px] font-semibold uppercase tracking-[.1em] text-[var(--text-tertiary)]">My notes</span>
-            <h1 className="m-0 text-2xl font-bold leading-tight tracking-[-.04em]">{folderName}</h1>
+            <h1 className="m-0 text-2xl font-bold leading-tight tracking-normal">{folderName}</h1>
           </div>
           <IconButton label="New note" onClick={onNew}>
             <LuPlus />
@@ -293,16 +293,14 @@ export default function Home() {
     setAccent,
   } = useNotesStore();
   const [query, setQuery] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [selectionMenu, setSelectionMenu] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
   const [commandMenu, setCommandMenu] = useState<{
     top: number;
     left: number;
   } | null>(null);
-  const [colorMenu, setColorMenu] = useState(false);
+  const [selectionMenu, setSelectionMenu] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const [mobileEditor, setMobileEditor] = useState(false);
   const [systemDark, setSystemDark] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -353,26 +351,22 @@ export default function Home() {
   }, []);
   useEffect(() => {
     const handleSelection = () => {
-      const range = window.getSelection();
-      if (
-        !range ||
-        range.isCollapsed ||
-        !range.toString().trim() ||
-        !editorRef.current?.contains(range.anchorNode)
-      ) {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.toString().trim() || !editorRef.current?.contains(selection.anchorNode)) {
         setSelectionMenu(null);
         return;
       }
-      savedSelection.current = range.getRangeAt(0).cloneRange();
-      const rect = range.getRangeAt(0).getBoundingClientRect();
+      savedSelection.current = selection.getRangeAt(0).cloneRange();
+      const rect = selection.getRangeAt(0).getBoundingClientRect();
+      setCommandMenu(null);
+      setSlashMode(false);
       setSelectionMenu({
-        top: Math.min(window.innerHeight - 48, rect.bottom + 8),
-        left: Math.max(12, Math.min(window.innerWidth - 220, rect.right - 208)),
+        top: Math.min(window.innerHeight - 56, rect.bottom + 8),
+        left: Math.max(12, Math.min(window.innerWidth - 300, rect.left)),
       });
     };
     document.addEventListener("selectionchange", handleSelection);
-    return () =>
-      document.removeEventListener("selectionchange", handleSelection);
+    return () => document.removeEventListener("selectionchange", handleSelection);
   }, []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -382,7 +376,6 @@ export default function Home() {
         setMobileEditor(true);
       }
       if (event.key === "Escape") {
-        setMenuOpen(false);
         setCommandMenu(null);
         setSelectionMenu(null);
       }
@@ -426,19 +419,19 @@ export default function Home() {
     document.execCommand(name, false, value);
     if (editorRef.current)
       updateSelected({ text: editorRef.current.innerHTML });
-    setSelectionMenu(null);
     setCommandMenu(null);
+    setSelectionMenu(null);
     editorRef.current?.focus();
   };
   const onInput = (event: FormEvent<HTMLDivElement>) => {
     const editor = event.currentTarget;
     updateSelected({ text: editor.innerHTML });
     const text = editor.textContent || "";
-    if (text.endsWith("@") || text.endsWith("/")) {
+    if (text.endsWith("/")) {
       const range = window.getSelection()?.getRangeAt(0);
       if (range) {
         savedSelection.current = range.cloneRange();
-        setSlashMode(text.endsWith("/"));
+        setSlashMode(true);
       }
       const rect =
         range?.getBoundingClientRect() || editor.getBoundingClientRect();
@@ -451,13 +444,14 @@ export default function Home() {
   const insertList = (type: "bullet" | "number" | "check") => {
     restoreSelection();
     const range = window.getSelection()?.getRangeAt(0);
-    if (
+    if (slashMode &&
       range?.startContainer.nodeType === Node.TEXT_NODE &&
       range.startOffset > 0
     ) {
       range.setStart(range.startContainer, range.startOffset - 1);
       range.deleteContents();
     }
+    setSlashMode(false);
     if (type === "check")
       document.execCommand(
         "insertHTML",
@@ -471,6 +465,7 @@ export default function Home() {
     if (editorRef.current)
       updateSelected({ text: editorRef.current.innerHTML });
     setCommandMenu(null);
+    setSelectionMenu(null);
     editorRef.current?.focus();
   };
   const editor = selected ? (
@@ -483,7 +478,7 @@ export default function Home() {
       </div>
       <h1
         ref={titleRef}
-        className="editor-title mt-4 block min-h-[46px] w-full border-0 bg-transparent text-[clamp(32px,4vw,40px)] font-bold leading-[1.15] tracking-[-.045em] text-[var(--text-primary)] outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-[var(--text-tertiary)]"
+        className="editor-title mt-4 block min-h-[46px] w-full border-0 bg-transparent text-[clamp(32px,4vw,40px)] font-bold leading-[1.15] tracking-normal text-[var(--text-primary)] outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-[var(--text-tertiary)]"
         contentEditable
         suppressContentEditableWarning
         role="textbox"
@@ -590,63 +585,13 @@ export default function Home() {
                 </IconButton>
               </>
             )}
-            <IconButton label="More" onClick={() => setMenuOpen(!menuOpen)}>
-              <LuEllipsis />
-            </IconButton>
-            {menuOpen && (
-              <div className="more-menu absolute right-0 top-10 z-20 w-44 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-2 shadow-xl">
-                <button className="block h-8 w-full rounded-lg bg-transparent px-2 text-left text-xs hover:bg-black/[.06]"
-                  onClick={() => updateSelected({ pinned: !selected?.pinned })}
-                >
-                  {selected?.pinned ? "Unpin Note" : "Pin Note"}
-                </button>
-                <button className="block h-8 w-full rounded-lg bg-transparent px-2 text-left text-xs hover:bg-black/[.06]">Duplicate</button>
-                <button className="block h-8 w-full rounded-lg bg-transparent px-2 text-left text-xs hover:bg-black/[.06]">Move To</button>
-                <button
-                  className="block h-8 w-full rounded-lg bg-transparent px-2 text-left text-xs text-[var(--danger)] hover:bg-red-500/10"
-                  onClick={() => {
-                    if (selected) deleteNote(selected.id);
-                    setMenuOpen(false);
-                  }}
-                >
-                  Delete Note
-                </button>
-              </div>
-            )}
           </div>
         </header>
         <div className="editor-scroll h-[calc(100vh-var(--toolbar-height))] overflow-y-auto">
           <article className="editor-document mx-auto min-h-full w-[min(840px,calc(100%-96px))] px-0 pb-24 pt-11 max-[767px]:w-[calc(100%-32px)] max-[767px]:pt-7">{editor}</article>
         </div>
-        {commandMenu && slashMode && (
-          <FormattingMenu
-            position={commandMenu}
-            command={command}
-            restoreSelection={restoreSelection}
-            colorMenu={colorMenu}
-            setColorMenu={setColorMenu}
-            applyColor={(color) => {
-              restoreSelection();
-              command("foreColor", color);
-            }}
-          />
-        )}
-        {commandMenu && !slashMode && <CommandMenu position={commandMenu} onList={insertList} />}
-        {selectionMenu && (
-          <FormattingMenu
-            position={selectionMenu}
-            command={command}
-            restoreSelection={restoreSelection}
-            colorMenu={colorMenu}
-            setColorMenu={setColorMenu}
-            applyColor={(color) => {
-              restoreSelection();
-              document.execCommand("foreColor", false, color);
-              updateSelected({ text: editorRef.current?.innerHTML || "" });
-              setColorMenu(false);
-            }}
-          />
-        )}
+        {commandMenu && <CommandMenu position={commandMenu} onList={insertList} onBlock={(tag) => command("formatBlock", tag)} onCommand={command} onColor={(color) => command("foreColor", color)} />}
+        {selectionMenu && <CommandMenu position={selectionMenu} onList={insertList} onBlock={(tag) => command("formatBlock", tag)} onCommand={command} onColor={(color) => command("foreColor", color)} />}
       </section>
     </main>
   );
@@ -655,80 +600,61 @@ export default function Home() {
 function CommandMenu({
   position,
   onList,
+  onBlock,
+  onCommand,
+  onColor,
 }: {
   position: { top: number; left: number };
   onList: (type: "bullet" | "number" | "check") => void;
+  onBlock: (tag: "h1" | "h4" | "p") => void;
+  onCommand: (name: string, value?: string) => void;
+  onColor: (color: string) => void;
 }) {
+  const [showColors, setShowColors] = useState(false);
   return (
-    <div className="command-menu fixed z-20 w-48 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-2 shadow-xl" style={position}>
-      <strong>Insert</strong>
-      <button onClick={() => onList("bullet")}>
-        <LuList /> Bullet list
-      </button>
-      <button onClick={() => onList("number")}>
-        <LuListOrdered /> Numbered list
-      </button>
-      <button onClick={() => onList("check")}>
-        <LuCheck /> Checklist
-      </button>
-      <button>
-        <LuFileText /> Quote
-      </button>
-      <button>
-        <LuFileText /> Code block
-      </button>
-    </div>
-  );
-}
-function FormattingMenu({
-  position,
-  command,
-  restoreSelection,
-  colorMenu,
-  setColorMenu,
-  applyColor,
-}: {
-  position: { top: number; left: number };
-  command: (name: string, value?: string) => void;
-  restoreSelection: () => void;
-  colorMenu: boolean;
-  setColorMenu: (open: boolean) => void;
-  applyColor: (color: string) => void;
-}) {
-  return (
-    <div
-      className="formatting-menu fixed z-20 flex gap-1 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-2 shadow-xl"
-      style={position}
-      onMouseDown={(e) => e.preventDefault()}
-    >
-      <button className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => command("bold")}>
-        <LuBold />
-      </button>
-      <button className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => command("underline")}>
-        <LuUnderline />
-      </button>
-      <button className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => command("insertUnorderedList")}>
+    <div className="command-menu fixed z-20 flex w-fit flex-wrap items-center gap-1 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-2 shadow-xl" style={position} onMouseDown={(event) => event.preventDefault()}>
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onList("bullet")} aria-label="Bullet list">
         <LuList />
       </button>
-      <button className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => command("insertOrderedList")}>
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onList("number")} aria-label="Numbered list">
         <LuListOrdered />
       </button>
-      <button className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-secondary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => { restoreSelection(); setColorMenu(!colorMenu); }}>
-        <LuPalette />
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onList("check")} aria-label="Checklist">
+        <LuCheck />
       </button>
-      {colorMenu && (
-        <div className="format-colors absolute bottom-10 right-0 flex gap-[10px] rounded-lg border border-[var(--separator)] bg-[var(--surface)] p-2 shadow-xl">
-          {accents.map((item) => (
-            <button
-              key={item.name}
-              className="h-4 w-4 rounded-full border-2 border-[var(--surface)] ring-1 ring-[var(--separator)]"
-              style={{ background: item.color }}
-              onClick={() => applyColor(item.color)}
-              aria-label={item.name}
-            />
-          ))}
-        </div>
-      )}
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-xs font-semibold text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onBlock("h1")} aria-label="Headline">
+        H1
+      </button>
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-xs font-semibold text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onBlock("h4")} aria-label="Heading 4">
+        H4
+      </button>
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onBlock("p")} aria-label="Body text">
+        <LuFileText />
+      </button>
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onCommand("bold")} aria-label="Bold">
+        <LuBold />
+      </button>
+      <button className="grid h-9 w-9 place-items-center rounded-lg text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => onCommand("underline")} aria-label="Underline">
+        <LuUnderline />
+      </button>
+      <div className="relative">
+        <button className="grid h-9 w-9 place-items-center rounded-lg text-[var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" onClick={() => setShowColors((open) => !open)} aria-label="Color palette">
+          <LuPalette />
+        </button>
+        {showColors && (
+          <div className="absolute left-full top-0 ml-2 grid w-28 grid-cols-4 gap-3 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-3 shadow-xl">
+            {accents.map((item) => (
+              <button
+                key={item.name}
+                className="h-5 w-5 rounded-full border-2 border-[var(--surface)] ring-1 ring-[var(--separator)]"
+                style={{ background: item.color }}
+                onClick={() => onColor(item.color)}
+                aria-label={`${item.name} text`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
