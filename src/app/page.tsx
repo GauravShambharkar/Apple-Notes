@@ -31,6 +31,11 @@ import {
   type Theme,
   useNotesStore,
 } from "@/store/useNotesStore";
+import {
+  clearStoredDirectoryHandle,
+  getStoredDirectoryHandle,
+  saveDirectoryHandle,
+} from "@/lib/idbHandleStore";
 
 const accents: { name: Accent; color: string }[] = [
   { name: "orange", color: "#ff9f0a" },
@@ -77,13 +82,19 @@ type ExportDirectory = {
     name: string,
     options?: { create?: boolean },
   ) => Promise<ExportFile>;
-  removeEntry?: (name: string, options?: { recursive?: boolean }) => Promise<void>;
+  removeEntry?: (
+    name: string,
+    options?: { recursive?: boolean },
+  ) => Promise<void>;
   requestPermission?: () => Promise<"granted" | "denied">;
 };
 type ExportManifest = { files: Record<string, string>; folders: string[] };
 async function writeNotesToDirectory(root: ExportDirectory, notes: Note[]) {
   const notesFolder = await root.getDirectoryHandle("Notes", { create: true });
-  const previous: ExportManifest = JSON.parse(localStorage.getItem("apple-notes-export-manifest") || '{"files":{},"folders":[]}');
+  const previous: ExportManifest = JSON.parse(
+    localStorage.getItem("apple-notes-export-manifest") ||
+      '{"files":{},"folders":[]}',
+  );
   const usedNames = new Map<string, number>();
   const files: Record<string, string> = {};
   const folders = new Set<string>();
@@ -121,13 +132,22 @@ async function writeNotesToDirectory(root: ExportDirectory, notes: Note[]) {
     try {
       const folderHandle = await notesFolder.getDirectoryHandle(folder);
       await folderHandle.removeEntry?.(file);
-    } catch { /* The file may already be gone. */ }
+    } catch {
+      /* The file may already be gone. */
+    }
   }
   for (const folder of previous.folders) {
     if (folders.has(folder)) continue;
-    try { await notesFolder.removeEntry?.(folder, { recursive: true }); } catch { /* The folder may already be gone. */ }
+    try {
+      await notesFolder.removeEntry?.(folder, { recursive: true });
+    } catch {
+      /* The folder may already be gone. */
+    }
   }
-  localStorage.setItem("apple-notes-export-manifest", JSON.stringify({ files, folders: [...folders] } satisfies ExportManifest));
+  localStorage.setItem(
+    "apple-notes-export-manifest",
+    JSON.stringify({ files, folders: [...folders] } satisfies ExportManifest),
+  );
 }
 function IconButton({
   label,
@@ -293,58 +313,83 @@ function NoteList({
       </header>
       <div className="note-list min-h-0 flex-1 overflow-y-auto p-2" role="list">
         {view === "folders"
-          ? [...folders].sort((a, b) => Number(b.pinned) - Number(a.pinned)).map((folder) => (
-              <button
-                key={folder.id}
-                className={`group flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors ${selectedFolder === folder.id ? "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] font-semibold" : "hover:bg-black/[.06]"}`}
-                onClick={() => {
-                  onFolder(folder.id);
-                  setView("notes");
-                }}
-              >
-                <LuFolder className="text-[var(--accent)]" />
-                <span className="flex-1">{folder.name}</span>
-                {folder.id !== "all" && (
-                  <span
-                    className={`grid h-7 w-7 place-items-center rounded-md ${folder.pinned ? "text-[var(--accent)]" : "text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100"}`}
-                    role="button"
-                    aria-label={`${folder.pinned ? "Unpin" : "Pin"} ${folder.name} folder`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onToggleFolderPin(folder.id);
-                    }}
-                  >
-                    <LuPin />
+          ? [...folders]
+              .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+              .map((folder) => (
+                <button
+                  key={folder.id}
+                  className={`group flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors ${selectedFolder === folder.id ? "bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] font-semibold" : "hover:bg-black/[.06]"}`}
+                  onClick={() => {
+                    onFolder(folder.id);
+                    setView("notes");
+                  }}
+                >
+                  <LuFolder className="text-[var(--accent)]" />
+                  <span className="flex-1">{folder.name}</span>
+                  {folder.id !== "all" && (
+                    <span
+                      className={`grid h-7 w-7 place-items-center rounded-md ${folder.pinned ? "text-[var(--accent)]" : "text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100"}`}
+                      role="button"
+                      aria-label={`${folder.pinned ? "Unpin" : "Pin"} ${folder.name} folder`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleFolderPin(folder.id);
+                      }}
+                    >
+                      <LuPin />
+                    </span>
+                  )}
+                  {folder.id !== "all" && (
+                    <span
+                      className="relative grid h-7 w-7 place-items-center rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                      role="button"
+                      aria-label={`Folder actions for ${folder.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setFolderMenu(
+                          folderMenu === folder.id ? null : folder.id,
+                        );
+                      }}
+                    >
+                      <LuEllipsisVertical />
+                      {folderMenu === folder.id && (
+                        <span
+                          className="absolute right-0 top-8 z-10 w-32 rounded-lg border border-[var(--separator)] bg-[var(--surface)] p-1 text-left shadow-xl"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            className="block w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-black/5"
+                            onClick={() => {
+                              onRenameFolder(folder.id);
+                              setFolderMenu(null);
+                            }}
+                          >
+                            Rename
+                          </button>
+                          <button
+                            className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-[var(--danger)] hover:bg-red-500/10"
+                            onClick={() => {
+                              onDeleteFolder(folder.id);
+                              setFolderMenu(null);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  <span className="text-xs text-[var(--text-tertiary)]">
+                    {folder.id === "all"
+                      ? allNotes.length
+                      : allNotes.filter(
+                          (note) =>
+                            note.folder.toLowerCase() ===
+                            folder.name.toLowerCase(),
+                        ).length}
                   </span>
-                )}
-                {folder.id !== "all" && (
-                  <span
-                    className="relative grid h-7 w-7 place-items-center rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-                    role="button"
-                    aria-label={`Folder actions for ${folder.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setFolderMenu(folderMenu === folder.id ? null : folder.id);
-                    }}
-                  >
-                    <LuEllipsisVertical />
-                    {folderMenu === folder.id && (
-                      <span className="absolute right-0 top-8 z-10 w-32 rounded-lg border border-[var(--separator)] bg-[var(--surface)] p-1 text-left shadow-xl" onClick={(event) => event.stopPropagation()}>
-                        <button className="block w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-black/5" onClick={() => { onRenameFolder(folder.id); setFolderMenu(null); }}>Rename</button>
-                        <button className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-[var(--danger)] hover:bg-red-500/10" onClick={() => { onDeleteFolder(folder.id); setFolderMenu(null); }}>Delete</button>
-                      </span>
-                    )}
-                  </span>
-                )}
-                <span className="text-xs text-[var(--text-tertiary)]">
-                  {folder.id === "all"
-                    ? allNotes.length
-                    : allNotes.filter(
-                        (note) => note.folder.toLowerCase() === folder.name.toLowerCase(),
-                      ).length}
-                </span>
-              </button>
-            ))
+                </button>
+              ))
           : notes.map((note) => (
               <NoteRow
                 key={note.id}
@@ -485,12 +530,28 @@ export default function Home() {
   const [mobileEditor, setMobileEditor] = useState(false);
   const [systemDark, setSystemDark] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [autoSave, setAutoSave] = useState(() => typeof window !== "undefined" && localStorage.getItem("apple-notes-auto-save") === "on");
+  const [autoSave, setAutoSave] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      localStorage.getItem("apple-notes-auto-save") === "on",
+  );
+  const [autoSaveGranted, setAutoSaveGranted] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      localStorage.getItem("apple-notes-auto-save-granted") === "true",
+  );
   const [folderDialog, setFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
-  const [renameDialog, setRenameDialog] = useState<{ id: string; name: string } | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [renameFolderName, setRenameFolderName] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<{ type: "note" | "folder"; id: string; name: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: "note" | "folder";
+    id: string;
+    name: string;
+  } | null>(null);
   const exportDirectory = useRef<ExportDirectory | null>(null);
   const saveQueue = useRef(Promise.resolve());
   const editorRef = useRef<HTMLDivElement>(null);
@@ -499,62 +560,155 @@ export default function Home() {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const selected = notes.find((note) => note.id === selectedId) || null;
   const toggleAutoSave = async () => {
-    if (autoSave && exportDirectory.current) {
+    if (autoSave) {
       setAutoSave(false);
       localStorage.setItem("apple-notes-auto-save", "off");
+      localStorage.removeItem("apple-notes-auto-save-granted");
+      setAutoSaveGranted(false);
+      exportDirectory.current = null;
+      await clearStoredDirectoryHandle();
       return;
     }
     if (exporting) return;
+
+    // Check if we already have a handle stored in IndexedDB
+    const stored = await getStoredDirectoryHandle();
+    if (stored) {
+      try {
+        const root = stored as unknown as ExportDirectory;
+        if (
+          root.requestPermission &&
+          (await (root.requestPermission as (opts?: { mode: string }) => Promise<string>)({ mode: "readwrite" })) === "granted"
+        ) {
+          exportDirectory.current = root;
+          await writeNotesToDirectory(root, notes);
+          setAutoSave(true);
+          localStorage.setItem("apple-notes-auto-save", "on");
+          setAutoSaveGranted(true);
+          localStorage.setItem("apple-notes-auto-save-granted", "true");
+          return;
+        }
+      } catch {
+        // Fall through to showDirectoryPicker if handle permission fails
+      }
+    }
+
     const picker = (
       window as Window & {
         showDirectoryPicker?: () => Promise<ExportDirectory>;
       }
     ).showDirectoryPicker;
+
     if (!picker) {
       window.alert(
         "Choose a folder export is not supported in this browser. Please use Chrome or Edge.",
       );
       return;
     }
+
     setExporting(true);
     try {
-      const root = exportDirectory.current || (await picker());
+      const root = await picker();
       exportDirectory.current = root;
-      if (root.requestPermission && (await root.requestPermission()) !== "granted") {
+      if (
+        root.requestPermission &&
+        (await (root.requestPermission as (opts?: { mode: string }) => Promise<string>)({ mode: "readwrite" })) !== "granted"
+      ) {
         setAutoSave(false);
         localStorage.setItem("apple-notes-auto-save", "off");
+        localStorage.removeItem("apple-notes-auto-save-granted");
+        setAutoSaveGranted(false);
         return;
       }
+      await saveDirectoryHandle(root as unknown as FileSystemDirectoryHandle);
       await writeNotesToDirectory(root, notes);
       setAutoSave(true);
       localStorage.setItem("apple-notes-auto-save", "on");
+      setAutoSaveGranted(true);
+      localStorage.setItem("apple-notes-auto-save-granted", "true");
     } catch {
       exportDirectory.current = null;
+      setAutoSave(false);
+      localStorage.removeItem("apple-notes-auto-save");
+      localStorage.removeItem("apple-notes-auto-save-granted");
+      setAutoSaveGranted(false);
     } finally {
       setExporting(false);
     }
   };
+
+  // Restore stored directory handle from IndexedDB on page load / new tab
+  useEffect(() => {
+    const initAutoSave = async () => {
+      const isAutoSaveOn =
+        localStorage.getItem("apple-notes-auto-save") === "on";
+      if (!isAutoSaveOn) return;
+
+      const stored = await getStoredDirectoryHandle();
+      if (stored) {
+        exportDirectory.current = stored as unknown as ExportDirectory;
+        setAutoSave(true);
+        setAutoSaveGranted(true);
+        try {
+          const perm = await (stored as unknown as { queryPermission?: (opts: { mode: string }) => Promise<string> }).queryPermission?.({ mode: "readwrite" });
+          if (perm === "granted") {
+            await writeNotesToDirectory(exportDirectory.current, notes);
+          }
+        } catch {}
+      }
+    };
+    initAutoSave();
+  }, []);
+
+  // Continuous auto-save to directory whenever notes state changes
   useEffect(() => {
     if (!autoSave || !exportDirectory.current) return;
-    const timeout = window.setTimeout(() => {
-      const root = exportDirectory.current;
-      if (!root) return;
-      saveQueue.current = saveQueue.current
-        .then(() => writeNotesToDirectory(root, notes))
-        .catch(() => {
+    const dir = exportDirectory.current;
+
+    saveQueue.current = saveQueue.current
+      .then(async () => {
+        try {
+          const perm = await (dir as unknown as { queryPermission?: (opts: { mode: string }) => Promise<string> }).queryPermission?.({ mode: "readwrite" });
+          if (perm === "granted") {
+            await writeNotesToDirectory(dir, notes);
+          }
+        } catch {}
+      })
+      .catch(() => {});
+  }, [notes, autoSave]);
+
+  // Keep auto-save state synced across browser tabs
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "apple-notes-auto-save") {
+        if (event.newValue === "on") {
+          setAutoSave(true);
+          setAutoSaveGranted(true);
+          getStoredDirectoryHandle().then((stored) => {
+            if (stored)
+              exportDirectory.current = stored as unknown as ExportDirectory;
+          });
+        } else {
           setAutoSave(false);
-          localStorage.setItem("apple-notes-auto-save", "off");
-        });
-    }, 500);
-    return () => window.clearTimeout(timeout);
-  }, [autoSave, notes]);
+          setAutoSaveGranted(false);
+          exportDirectory.current = null;
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
   const visibleNotes = useMemo(
     () =>
       notes
         .filter((note) => {
           const folderMatch =
             selectedFolder === "all" ||
-            note.folder.toLowerCase() === (folders.find((folder) => folder.id === selectedFolder)?.name || "").toLowerCase();
+            note.folder.toLowerCase() ===
+              (
+                folders.find((folder) => folder.id === selectedFolder)?.name ||
+                ""
+              ).toLowerCase();
           const search =
             `${note.title} ${note.subtitle || ""} ${plain(note.text)} ${(note.tags || []).join(" ")}`.toLowerCase();
           return folderMatch && search.includes(query.toLowerCase());
@@ -589,6 +743,7 @@ export default function Home() {
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+
   useEffect(() => {
     const handleSelection = () => {
       const selection = window.getSelection();
@@ -618,7 +773,7 @@ export default function Home() {
   useEffect(() => {
     const syncCaret = () => {
       const selection = window.getSelection();
-      if (!selection?.isCollapsed || !selection.anchorNode) {
+      if (!selection || !selection.isCollapsed || !selection.anchorNode) {
         setCaretBar(null);
         return;
       }
@@ -628,24 +783,74 @@ export default function Home() {
         setCaretBar(null);
         return;
       }
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      const lineRect = range.getClientRects()[0];
       const host = inTitle ? titleRef.current : editorRef.current;
-      const fallback = host?.getBoundingClientRect();
-      setCaretBar({
-        top: lineRect?.top || rect.top || fallback?.top || 0,
-        left: lineRect?.left || rect.left || fallback?.left || 0,
-        height: lineRect?.height || (inTitle ? 42 : 26),
-      });
+      const range = selection.getRangeAt(0);
+
+      let top = 0;
+      let left = 0;
+      let height = inTitle ? 42 : 26;
+      let measured = false;
+
+      const clientRects = range.getClientRects();
+      if (clientRects.length > 0) {
+        const lastRect = clientRects[clientRects.length - 1];
+        if (lastRect && lastRect.height > 0 && lastRect.top > 0) {
+          top = lastRect.top;
+          left = lastRect.left;
+          height = lastRect.height;
+          measured = true;
+        }
+      }
+
+      if (!measured) {
+        const rangeRect = range.getBoundingClientRect();
+        if (rangeRect && rangeRect.height > 0 && rangeRect.top > 0) {
+          top = rangeRect.top;
+          left = rangeRect.left;
+          height = rangeRect.height;
+          measured = true;
+        }
+      }
+
+      if (!measured && selection.anchorNode) {
+        try {
+          const marker = document.createElement("span");
+          marker.appendChild(document.createTextNode("\u200b"));
+          const clonedRange = range.cloneRange();
+          clonedRange.insertNode(marker);
+          const markerRect = marker.getBoundingClientRect();
+          if (markerRect && markerRect.top > 0) {
+            top = markerRect.top;
+            left = markerRect.left;
+            if (markerRect.height > 0) height = markerRect.height;
+            measured = true;
+          }
+          marker.parentNode?.removeChild(marker);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        } catch {}
+      }
+
+      if (!measured && host) {
+        const fallback = host.getBoundingClientRect();
+        top = fallback.top;
+        left = fallback.left;
+      }
+
+      setCaretBar({ top, left, height });
     };
+
     document.addEventListener("selectionchange", syncCaret);
     window.addEventListener("resize", syncCaret);
     window.addEventListener("scroll", syncCaret, true);
+    window.addEventListener("keyup", syncCaret);
+    window.addEventListener("keydown", syncCaret);
     return () => {
       document.removeEventListener("selectionchange", syncCaret);
       window.removeEventListener("resize", syncCaret);
       window.removeEventListener("scroll", syncCaret, true);
+      window.removeEventListener("keyup", syncCaret);
+      window.removeEventListener("keydown", syncCaret);
     };
   }, []);
   useEffect(() => {
@@ -669,13 +874,10 @@ export default function Home() {
   const folderName =
     selectedFolder === "all"
       ? "All Notes"
-      : folders.find((folder) => folder.id === selectedFolder)?.name || "All Notes";
+      : folders.find((folder) => folder.id === selectedFolder)?.name ||
+        "All Notes";
   const newNote = () => {
-    addNote(
-      selectedFolder === "all"
-        ? "Ideas"
-        : folderName,
-    );
+    addNote(selectedFolder === "all" ? "Ideas" : folderName);
     setMobileEditor(true);
   };
   const createFolder = () => {
@@ -741,6 +943,78 @@ export default function Home() {
       });
     } else setCommandMenu(null);
   };
+  const onEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter") {
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+
+      let node: Node | null = range.startContainer;
+      let liElement: HTMLLIElement | null = null;
+      while (node && node !== editorRef.current) {
+        if (
+          node.nodeName === "LI" &&
+          (node as HTMLElement).parentElement?.classList.contains("checklist")
+        ) {
+          liElement = node as HTMLLIElement;
+          break;
+        }
+        node = node.parentNode;
+      }
+
+      if (liElement) {
+        event.preventDefault();
+        const span = liElement.querySelector("span");
+        const rawText = (span ? span.textContent : liElement.textContent || "")
+          .replace(/\u200b/g, "")
+          .trim();
+
+        if (!rawText || rawText === "New task" || rawText === "New item") {
+          // Exit checklist if Enter is pressed on an empty or default task item
+          const parentUl = liElement.parentElement;
+          liElement.remove();
+          const p = document.createElement("p");
+          p.innerHTML = "<br>";
+          if (parentUl && parentUl.children.length === 0) {
+            parentUl.replaceWith(p);
+          } else if (parentUl) {
+            parentUl.after(p);
+          } else {
+            editorRef.current?.appendChild(p);
+          }
+          const newRange = document.createRange();
+          newRange.setStart(p, 0);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        } else {
+          // Add a new checklist item
+          const newLi = document.createElement("li");
+          newLi.innerHTML =
+            '<input type="checkbox"> <span>New item</span>';
+          liElement.after(newLi);
+
+          const newSpan = newLi.querySelector("span");
+          if (newSpan) {
+            const newRange = document.createRange();
+            const textNode = newSpan.firstChild;
+            if (textNode) {
+              newRange.selectNodeContents(textNode);
+            } else {
+              newRange.setStart(newSpan, 0);
+              newRange.collapse(true);
+            }
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
+        }
+
+        if (editorRef.current) {
+          updateSelected({ text: editorRef.current.innerHTML });
+        }
+      }
+    }
+  };
   const insertList = (type: "bullet" | "number" | "check") => {
     restoreSelection();
     const range = window.getSelection()?.getRangeAt(0);
@@ -757,7 +1031,7 @@ export default function Home() {
       document.execCommand(
         "insertHTML",
         false,
-        '<ul class="checklist"><li><label><input type="checkbox"> <span>New task</span></label></li></ul>',
+        '<ul class="checklist"><li><input type="checkbox"> <span>New task</span></li></ul>',
       );
     else
       document.execCommand(
@@ -801,6 +1075,7 @@ export default function Home() {
         contentEditable
         suppressContentEditableWarning
         onInput={onInput}
+        onKeyDown={onEditorKeyDown}
         onClick={(e) => {
           const target = e.target as HTMLInputElement;
           if (target.type === "checkbox") {
@@ -840,7 +1115,11 @@ export default function Home() {
         onFolder={selectFolder}
         onDelete={(id) => {
           const note = notes.find((item) => item.id === id);
-          setConfirmDelete({ type: "note", id, name: note?.title || "Untitled note" });
+          setConfirmDelete({
+            type: "note",
+            id,
+            name: note?.title || "Untitled note",
+          });
         }}
         onNew={newNote}
         onNewFolder={() => setFolderDialog(true)}
@@ -854,7 +1133,8 @@ export default function Home() {
         }}
         onDeleteFolder={(id) => {
           const folder = folders.find((item) => item.id === id);
-          if (folder) setConfirmDelete({ type: "folder", id, name: folder.name });
+          if (folder)
+            setConfirmDelete({ type: "folder", id, name: folder.name });
         }}
       />
       <section
@@ -875,7 +1155,7 @@ export default function Home() {
             </span> */}
           </div>
           <div className="toolbar-right relative flex items-center gap-1">
-            <p className="text-[16px] flex text-white/30 items-center w-fit">
+            <p className="text-[16px]  text-black dark:text-white/30 flex items-center w-fit">
               Auto save
               <IconButton
                 label={autoSave ? "Auto-save on" : "Turn auto-save on"}
@@ -911,7 +1191,11 @@ export default function Home() {
                   label="Delete note"
                   className="text-[var(--text-secondary)] hover:bg-red-500/10 hover:text-[var(--danger)]"
                   onClick={() => {
-                    setConfirmDelete({ type: "note", id: selected.id, name: selected.title || "Untitled note" });
+                    setConfirmDelete({
+                      type: "note",
+                      id: selected.id,
+                      name: selected.title || "Untitled note",
+                    });
                   }}
                 >
                   <LuTrash2 />
@@ -954,35 +1238,113 @@ export default function Home() {
           />
         )}
         {(folderDialog || renameDialog || confirmDelete) && (
-          <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4" onMouseDown={() => { setFolderDialog(false); setRenameDialog(null); }}>
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4"
+            onMouseDown={() => {
+              setFolderDialog(false);
+              setRenameDialog(null);
+            }}
+          >
             {folderDialog && (
-              <form className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl" onSubmit={(event) => { event.preventDefault(); createFolder(); }} onMouseDown={(event) => event.stopPropagation()}>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">New folder</h2>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">Give your notes a new place to live.</p>
-                <input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} placeholder="Folder name" className="mt-4 w-full rounded-lg border border-[var(--separator)] bg-[var(--background)] px-3 py-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
+              <form
+                className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createFolder();
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                  New folder
+                </h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Give your notes a new place to live.
+                </p>
+                <input
+                  autoFocus
+                  value={newFolderName}
+                  onChange={(event) => setNewFolderName(event.target.value)}
+                  placeholder="Folder name"
+                  className="mt-4 w-full rounded-lg border border-[var(--separator)] bg-[var(--background)] px-3 py-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                />
                 <div className="mt-5 flex justify-end gap-2">
-                  <button type="button" className="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)]" onClick={() => setFolderDialog(false)}>Cancel</button>
-                  <button type="submit" className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Create</button>
+                  <button
+                    type="button"
+                    className="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)]"
+                    onClick={() => setFolderDialog(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white"
+                  >
+                    Create
+                  </button>
                 </div>
               </form>
             )}
             {renameDialog && (
-              <form className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl" onSubmit={(event) => { event.preventDefault(); saveFolderRename(); }} onMouseDown={(event) => event.stopPropagation()}>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Rename folder</h2>
-                <input autoFocus value={renameFolderName} onChange={(event) => setRenameFolderName(event.target.value)} className="mt-4 w-full rounded-lg border border-[var(--separator)] bg-[var(--background)] px-3 py-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
+              <form
+                className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  saveFolderRename();
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                  Rename folder
+                </h2>
+                <input
+                  autoFocus
+                  value={renameFolderName}
+                  onChange={(event) => setRenameFolderName(event.target.value)}
+                  className="mt-4 w-full rounded-lg border border-[var(--separator)] bg-[var(--background)] px-3 py-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                />
                 <div className="mt-5 flex justify-end gap-2">
-                  <button type="button" className="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)]" onClick={() => setRenameDialog(null)}>Cancel</button>
-                  <button type="submit" className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Save</button>
+                  <button
+                    type="button"
+                    className="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)]"
+                    onClick={() => setRenameDialog(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white"
+                  >
+                    Save
+                  </button>
                 </div>
               </form>
             )}
             {confirmDelete && (
-              <div className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Delete {confirmDelete.type === "folder" ? "folder" : "note"}?</h2>
-                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{confirmDelete.type === "folder" ? `This will delete “${confirmDelete.name}” and all notes inside it.` : `“${confirmDelete.name}” will be permanently deleted.`}</p>
+              <div
+                className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                  Delete {confirmDelete.type === "folder" ? "folder" : "note"}?
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                  {confirmDelete.type === "folder"
+                    ? `This will delete “${confirmDelete.name}” and all notes inside it.`
+                    : `“${confirmDelete.name}” will be permanently deleted.`}
+                </p>
                 <div className="mt-5 flex justify-end gap-2">
-                  <button className="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)]" onClick={() => setConfirmDelete(null)}>Cancel</button>
-                  <button className="rounded-lg bg-[var(--danger)] px-3 py-2 text-sm font-semibold text-white" onClick={confirmDeletion}>Delete</button>
+                  <button
+                    className="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)]"
+                    onClick={() => setConfirmDelete(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="rounded-lg bg-[var(--danger)] px-3 py-2 text-sm font-semibold text-white"
+                    onClick={confirmDeletion}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             )}
