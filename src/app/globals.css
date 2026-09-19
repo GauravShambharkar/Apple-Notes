@@ -51,6 +51,11 @@ button {
   cursor: url("/pointinghand.svg") 4 2, pointer;
 }
 
+@keyframes caret-blink {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: 0; }
+}
+
 .notes-app,
 .notes-app.theme-dark {
   cursor: url("/cursor.svg") 2 2, default;
@@ -204,5 +209,5 @@ button {
 
 .editor-title,
 .editor-content {
-  caret-color: var(--accent);
+  caret-color: transparent;
 }
