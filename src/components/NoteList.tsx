@@ -61,7 +61,7 @@ export function NoteList({
   const [importOpen, setImportOpen] = useState(false);
 
   return (
-    <section className="notes-panel flex h-screen min-w-0 flex-col overflow-hidden border-r border-[var(--separator)] bg-[var(--background)]">
+    <section className="notes-panel flex h-screen w-[320px] shrink-0 flex-col overflow-hidden border-r border-[var(--separator)] bg-[var(--background)]">
       <header className="notes-panel-header shrink-0 border-b border-[var(--separator)] p-4">
         <div className="notes-title-line mb-4 flex items-end justify-between gap-2">
           <div className="min-w-0 flex-1">

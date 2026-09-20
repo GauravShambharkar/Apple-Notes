@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 export function useCaretSync(
   titleRef: React.RefObject<HTMLHeadingElement | null>,
   editorRef: React.RefObject<HTMLDivElement | null>,
+  subtitleRef?: React.RefObject<HTMLDivElement | null>,
 ) {
   const [caretBar, setCaretBar] = useState<{
     top: number;
@@ -58,12 +59,17 @@ export function useCaretSync(
         return;
       }
       const inTitle = !!titleRef.current?.contains(selection.anchorNode);
+      const inSubtitle = !!subtitleRef?.current?.contains(selection.anchorNode);
       const inBody = !!editorRef.current?.contains(selection.anchorNode);
-      if (!inTitle && !inBody) {
+      if (!inTitle && !inSubtitle && !inBody) {
         setCaretBar(null);
         return;
       }
-      const host = inTitle ? titleRef.current : editorRef.current;
+      const host = inTitle
+        ? titleRef.current
+        : inSubtitle
+          ? (subtitleRef ? subtitleRef.current : null)
+          : editorRef.current;
       const range = selection.getRangeAt(0);
 
       let top = 0;
@@ -122,7 +128,7 @@ export function useCaretSync(
       window.removeEventListener("keyup", syncCaret);
       window.removeEventListener("keydown", syncCaret);
     };
-  }, [editorRef, titleRef]);
+  }, [editorRef, titleRef, subtitleRef]);
 
   const restoreSelection = () => {
     if (!savedSelection.current) return;

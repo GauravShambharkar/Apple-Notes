@@ -63,6 +63,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const subtitleRef = useRef<HTMLDivElement>(null);
 
   const {
     caretBar,
@@ -74,7 +75,7 @@ export default function Home() {
     setSlashMode,
     savedSelection,
     restoreSelection,
-  } = useCaretSync(titleRef, editorRef);
+  } = useCaretSync(titleRef, editorRef, subtitleRef);
 
   const selected = notes.find((note) => note.id === selectedId) || null;
 
@@ -180,8 +181,36 @@ export default function Home() {
     setMobileEditor(false);
   };
 
+  const font = useNotesStore((s) => s.font) || "sf-display";
+  const resolvedTheme =
+    theme === "system"
+      ? systemDark
+        ? "dark"
+        : "light"
+      : (theme as string) === "dim" || theme === "dark"
+        ? "dark"
+        : "light";
+
+  const accentsArray: { name: string; color: string }[] = [
+    { name: "orange", color: "#ff9f0a" },
+    { name: "yellow", color: "#ffd60a" },
+    { name: "red", color: "#ff453a" },
+    { name: "pink", color: "#ff375f" },
+    { name: "purple", color: "#bf5af2" },
+    { name: "blue", color: "#0a84ff" },
+    { name: "cyan", color: "#64d2ff" },
+    { name: "green", color: "#30d158" },
+    { name: "white", color: "#ffffff" },
+  ];
+
+  const accentColor =
+    accentsArray.find((a) => a.name === accent)?.color || "#ff9f0a";
+
   return (
-    <main className="app-shell flex h-screen w-screen overflow-hidden text-[var(--text-primary)]">
+    <main
+      className={`app-shell theme-${resolvedTheme} font-${font} flex h-screen w-screen overflow-hidden bg-[var(--background)] text-[var(--text-primary)]`}
+      style={{ "--accent": accentColor } as React.CSSProperties}
+    >
       <NoteList
         notes={visibleNotes}
         allNotes={notes}
@@ -378,6 +407,7 @@ export default function Home() {
         updateSelected={updateSelected}
         setConfirmDelete={setConfirmDelete}
         titleRef={titleRef}
+        subtitleRef={subtitleRef}
         editorRef={editorRef}
         caretBar={caretBar}
         commandMenu={commandMenu}

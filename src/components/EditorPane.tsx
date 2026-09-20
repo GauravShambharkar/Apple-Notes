@@ -27,6 +27,7 @@ export function EditorPane({
   updateSelected,
   setConfirmDelete,
   titleRef,
+  subtitleRef,
   editorRef,
   caretBar,
   commandMenu,
@@ -52,6 +53,7 @@ export function EditorPane({
     value: { type: "note" | "folder"; id: string; name: string } | null,
   ) => void;
   titleRef: React.RefObject<HTMLHeadingElement | null>;
+  subtitleRef?: React.RefObject<HTMLDivElement | null>;
   editorRef: React.RefObject<HTMLDivElement | null>;
   caretBar: { top: number; left: number; height: number } | null;
   commandMenu: { top: number; left: number } | null;
@@ -70,9 +72,12 @@ export function EditorPane({
     if (selected) {
       if (editorRef.current) editorRef.current.innerHTML = selected.text;
       if (titleRef.current) titleRef.current.textContent = selected.title;
+      if (subtitleRef?.current)
+        subtitleRef.current.textContent = selected.subtitle || "";
     } else {
       if (editorRef.current) editorRef.current.innerHTML = "";
       if (titleRef.current) titleRef.current.textContent = "";
+      if (subtitleRef?.current) subtitleRef.current.textContent = "";
     }
   }, [selectedId]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -234,6 +239,18 @@ export function EditorPane({
         }
       />
       <div
+        ref={subtitleRef}
+        className="editor-subtitle my-[8px] block min-h-[28px] w-full border-0 bg-transparent text-lg font-medium leading-normal text-[var(--text-secondary)] outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-[var(--text-tertiary)]"
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label="Note subtitle"
+        data-placeholder="Subtitle"
+        onInput={(e) =>
+          updateSelected({ subtitle: e.currentTarget.textContent || "" })
+        }
+      />
+      <div
         ref={editorRef}
         className="editor-body outline-none"
         contentEditable
@@ -253,9 +270,9 @@ export function EditorPane({
 
   return (
     <section
-      className={`editor-pane relative min-w-0 h-screen overflow-hidden bg-[var(--editor)] max-[767px]:fixed max-[767px]:inset-0 max-[767px]:z-40 max-[767px]:hidden ${mobileEditor ? "mobile-visible max-[767px]:block" : ""}`}
+      className={`editor-pane relative flex flex-1 w-full min-w-0 h-screen flex-col overflow-hidden bg-[var(--editor)] max-[767px]:fixed max-[767px]:inset-0 max-[767px]:z-40 max-[767px]:hidden ${mobileEditor ? "mobile-visible max-[767px]:block" : ""}`}
     >
-      <header className="top-toolbar flex h-[var(--toolbar-height)] items-center justify-between border-b border-[var(--separator)] px-5 max-[767px]:px-3">
+      <header className="top-toolbar flex h-[var(--toolbar-height)] w-full shrink-0 items-center justify-between border-b border-[var(--separator)] px-7 max-[767px]:px-5">
         <div className="toolbar-left flex items-center gap-1">
           {mobileEditor && (
             <button
@@ -327,7 +344,7 @@ export function EditorPane({
         />
       )}
       <div className="editor-scroll h-[calc(100vh-var(--toolbar-height))] overflow-y-auto">
-        <article className="editor-document mx-auto min-h-full w-[min(840px,calc(100%-96px))] px-0 pb-24 pt-11 max-[767px]:w-[calc(100%-32px)] max-[767px]:pt-7">
+        <article className="editor-document min-h-full w-full max-w-[840px] px-7 pb-24 pt-11 max-[767px]:px-5 max-[767px]:pt-7">
           {editor}
         </article>
       </div>
