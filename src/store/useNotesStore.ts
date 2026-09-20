@@ -12,6 +12,7 @@ export type Accent =
   | "cyan"
   | "green"
   | "white";
+export type Font = "sf-display" | "anthropic-serif";
 export type Note = {
   id: string;
   title: string;
@@ -44,6 +45,7 @@ type NotesState = {
   selectedFolder: string;
   theme: Theme;
   accent: Accent;
+  font: Font;
   updateNote: (id: string, patch: Partial<Note>) => void;
   addNote: (folder?: string) => void;
   deleteNote: (id: string) => void;
@@ -55,6 +57,16 @@ type NotesState = {
   selectFolder: (folder: string) => void;
   setTheme: (theme: Theme) => void;
   setAccent: (accent: Accent) => void;
+  setFont: (font: Font) => void;
+  importBatch: (
+    importedFolders: string[],
+    importedNotes: Array<{
+      title: string;
+      subtitle?: string;
+      text: string;
+      folder: string;
+    }>,
+  ) => void;
 };
 
 export const useNotesStore = create<NotesState>()(
@@ -66,6 +78,7 @@ export const useNotesStore = create<NotesState>()(
       selectedFolder: "all",
       theme: "system",
       accent: "orange",
+      font: "sf-display",
       updateNote: (id, patch) =>
         set((state) => ({
           notes: state.notes.map((note) =>
@@ -182,15 +195,61 @@ export const useNotesStore = create<NotesState>()(
       selectFolder: (selectedFolder) => set({ selectedFolder }),
       setTheme: (theme) => set({ theme }),
       setAccent: (accent) => set({ accent }),
+      importBatch: (importedFolders, importedNotes) =>
+        set((state) => {
+          const newFolders = [...state.folders];
+          for (const folderName of importedFolders) {
+            const cleanName = folderName.trim();
+            if (
+              cleanName &&
+              !newFolders.some(
+                (f) => f.name.toLowerCase() === cleanName.toLowerCase(),
+              )
+            ) {
+              const newFolder: Folder = {
+                id: `${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${crypto.randomUUID().slice(0, 6)}`,
+                name: cleanName,
+                icon: "folder",
+              };
+              if (newFolders[0]?.id === "all") {
+                newFolders.splice(1, 0, newFolder);
+              } else {
+                newFolders.unshift(newFolder);
+              }
+            }
+          }
+
+          const newNotesList: Note[] = importedNotes.map((n) => ({
+            id: crypto.randomUUID(),
+            title: n.title || "Untitled note",
+            subtitle: n.subtitle || "",
+            text: n.text || "",
+            updated: Date.now(),
+            pinned: false,
+            folder: n.folder || "Ideas",
+            tags: [],
+          }));
+
+          const updatedNotes = [...newNotesList, ...state.notes];
+          const newSelectedId = newNotesList[0]?.id || state.selectedId;
+
+          return {
+            folders: newFolders,
+            notes: updatedNotes,
+            selectedId: newSelectedId,
+          };
+        }),
+      setFont: (font) => set({ font }),
     }),
     {
       name: "apple-notes-zustand",
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) => {
         const state = persistedState as NotesState;
         return {
           ...state,
           accent: version < 3 ? "orange" : state.accent,
+          font: state.font || "sf-display",
           folders: state.folders.filter((folder) => folder.id !== "deleted"),
           selectedFolder:
             state.selectedFolder === "deleted" ? "all" : state.selectedFolder,

@@ -8,10 +8,12 @@ import {
   LuChevronDown,
   LuCloud,
   LuCloudOff,
-  LuFileText,
-  LuFolder,
-  LuFolderPlus,
   LuEllipsisVertical,
+  LuFileText,
+  LuFileUp,
+  LuFolder,
+  LuFolderInput,
+  LuFolderPlus,
   LuList,
   LuListOrdered,
   LuMonitor,
@@ -24,6 +26,7 @@ import {
   LuSun,
   LuTrash2,
   LuUnderline,
+  LuUpload,
 } from "react-icons/lu";
 import {
   type Accent,
@@ -36,6 +39,7 @@ import {
   getStoredDirectoryHandle,
   saveDirectoryHandle,
 } from "@/lib/idbHandleStore";
+import { TbFileImport } from "react-icons/tb";
 
 const accents: { name: Accent; color: string }[] = [
   { name: "orange", color: "#ff9f0a" },
@@ -48,6 +52,61 @@ const accents: { name: Accent; color: string }[] = [
   { name: "green", color: "#30d158" },
   { name: "white", color: "#ffffff" },
 ];
+
+function parseImportedContent(filename: string, rawText: string) {
+  const baseName = filename.replace(/\.[^/.]+$/, "");
+
+  if (filename.toLowerCase().endsWith(".json")) {
+    try {
+      const parsed = JSON.parse(rawText);
+      if (parsed.title || parsed.text) {
+        return {
+          title: parsed.title || baseName,
+          subtitle: parsed.subtitle || "",
+          text: parsed.text || "",
+        };
+      }
+    } catch {}
+  }
+
+  if (
+    filename.toLowerCase().endsWith(".html") ||
+    filename.toLowerCase().endsWith(".htm")
+  ) {
+    return {
+      title: baseName,
+      subtitle: "",
+      text: rawText,
+    };
+  }
+
+  const lines = rawText.split(/\r?\n/).map((l) => l.trim());
+  const nonEmpty = lines.filter((l) => l.length > 0);
+
+  let title = baseName;
+  let subtitle = "";
+  let bodyLines = lines;
+
+  if (nonEmpty.length > 0) {
+    title = nonEmpty[0].replace(/^#+\s*/, "");
+    if (nonEmpty.length > 1) {
+      subtitle = nonEmpty[1].replace(/^#+\s*/, "");
+      bodyLines = lines.slice(lines.indexOf(nonEmpty[0]) + 1);
+    } else {
+      bodyLines = lines.slice(lines.indexOf(nonEmpty[0]) + 1);
+    }
+  }
+
+  const htmlText = bodyLines
+    .map((line) => (line ? `<p>${line}</p>` : "<p><br></p>"))
+    .join("");
+
+  return {
+    title: title || baseName,
+    subtitle,
+    text: htmlText || `<p>${rawText}</p>`,
+  };
+}
 
 function dateLabel(date: number) {
   const day = new Date(date);
@@ -90,7 +149,6 @@ type ExportDirectory = {
 };
 type ExportManifest = { files: Record<string, string>; folders: string[] };
 async function writeNotesToDirectory(root: ExportDirectory, notes: Note[]) {
-  const notesFolder = await root.getDirectoryHandle("Notes", { create: true });
   const previous: ExportManifest = JSON.parse(
     localStorage.getItem("apple-notes-export-manifest") ||
       '{"files":{},"folders":[]}',
@@ -113,7 +171,7 @@ async function writeNotesToDirectory(root: ExportDirectory, notes: Note[]) {
       "",
       plain(note.text),
     ].join("\n");
-    const folderHandle = await notesFolder.getDirectoryHandle(folder, {
+    const folderHandle = await root.getDirectoryHandle(folder, {
       create: true,
     });
     const fileHandle = await folderHandle.getFileHandle(`${fileName}.txt`, {
@@ -130,7 +188,7 @@ async function writeNotesToDirectory(root: ExportDirectory, notes: Note[]) {
     if (currentPaths.has(oldPath)) continue;
     const [folder, file] = oldPath.split("/");
     try {
-      const folderHandle = await notesFolder.getDirectoryHandle(folder);
+      const folderHandle = await root.getDirectoryHandle(folder);
       await folderHandle.removeEntry?.(file);
     } catch {
       /* The file may already be gone. */
@@ -139,7 +197,7 @@ async function writeNotesToDirectory(root: ExportDirectory, notes: Note[]) {
   for (const folder of previous.folders) {
     if (folders.has(folder)) continue;
     try {
-      await notesFolder.removeEntry?.(folder, { recursive: true });
+      await root.removeEntry?.(folder, { recursive: true });
     } catch {
       /* The folder may already be gone. */
     }
@@ -231,6 +289,8 @@ function NoteList({
   onDeleteFolder,
   onToggleFolderPin,
   onRenameFolder,
+  onImportFolder,
+  onImportNotes,
 }: {
   notes: Note[];
   allNotes: Note[];
@@ -248,13 +308,16 @@ function NoteList({
   onDeleteFolder: (id: string) => void;
   onToggleFolderPin: (id: string) => void;
   onRenameFolder: (id: string) => void;
+  onImportFolder: () => void;
+  onImportNotes: () => void;
 }) {
   const [view, setView] = useState<"notes" | "folders">("notes");
   const [folderMenu, setFolderMenu] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   return (
     <section className="notes-panel flex h-screen min-w-0 flex-col overflow-hidden border-r border-[var(--separator)] bg-[var(--background)]">
       <header className="notes-panel-header shrink-0 border-b border-[var(--separator)] p-4">
-        <div className="notes-title-line mb-4 flex items-center justify-between gap-2">
+        <div className="notes-title-line mb-4 flex items-end justify-between gap-2">
           <div className="min-w-0 flex-1">
             <span className="eyebrow mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
               My notes
@@ -263,7 +326,40 @@ function NoteList({
               {folderName}
             </h1>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
+            <IconButton
+              label="Import notes or folder"
+              onClick={() => setImportOpen(!importOpen)}
+            >
+              <TbFileImport />
+            </IconButton>
+            {importOpen && (
+              <div className="absolute right-0 top-9 z-30 w-48 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-1.5 shadow-2xl">
+                <p className="m-1.5 text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
+                  Import Options
+                </p>
+                <button
+                  className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs text-[var(--text-primary)] hover:bg-black/[.06] dark:hover:bg-white/[.08]"
+                  onClick={() => {
+                    setImportOpen(false);
+                    onImportFolder();
+                  }}
+                >
+                  <LuFolderInput className="text-sm text-[var(--accent)]" />
+                  <span className="font-medium">Import Folder</span>
+                </button>
+                <button
+                  className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs text-[var(--text-primary)] hover:bg-black/[.06] dark:hover:bg-white/[.08]"
+                  onClick={() => {
+                    setImportOpen(false);
+                    onImportNotes();
+                  }}
+                >
+                  <LuFileUp className="text-sm text-[var(--accent)]" />
+                  <span className="font-medium">Import Notes Only</span>
+                </button>
+              </div>
+            )}
             {view === "folders" ? (
               <IconButton label="New folder" onClick={onNewFolder}>
                 <LuFolderPlus />
@@ -512,6 +608,8 @@ export default function Home() {
     selectFolder,
     setTheme,
     setAccent,
+    setFont,
+    importBatch,
   } = useNotesStore();
   const [query, setQuery] = useState("");
   const [commandMenu, setCommandMenu] = useState<{
@@ -530,16 +628,8 @@ export default function Home() {
   const [mobileEditor, setMobileEditor] = useState(false);
   const [systemDark, setSystemDark] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [autoSave, setAutoSave] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      localStorage.getItem("apple-notes-auto-save") === "on",
-  );
-  const [autoSaveGranted, setAutoSaveGranted] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      localStorage.getItem("apple-notes-auto-save-granted") === "true",
-  );
+  const [autoSave, setAutoSave] = useState(false);
+  const [autoSaveGranted, setAutoSaveGranted] = useState(false);
   const [folderDialog, setFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [renameDialog, setRenameDialog] = useState<{
@@ -552,6 +642,9 @@ export default function Home() {
     id: string;
     name: string;
   } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const exportDirectory = useRef<ExportDirectory | null>(null);
   const saveQueue = useRef(Promise.resolve());
   const editorRef = useRef<HTMLDivElement>(null);
@@ -578,7 +671,11 @@ export default function Home() {
         const root = stored as unknown as ExportDirectory;
         if (
           root.requestPermission &&
-          (await (root.requestPermission as (opts?: { mode: string }) => Promise<string>)({ mode: "readwrite" })) === "granted"
+          (await (
+            root.requestPermission as (opts?: {
+              mode: string;
+            }) => Promise<string>
+          )({ mode: "readwrite" })) === "granted"
         ) {
           exportDirectory.current = root;
           await writeNotesToDirectory(root, notes);
@@ -612,7 +709,9 @@ export default function Home() {
       exportDirectory.current = root;
       if (
         root.requestPermission &&
-        (await (root.requestPermission as (opts?: { mode: string }) => Promise<string>)({ mode: "readwrite" })) !== "granted"
+        (await (
+          root.requestPermission as (opts?: { mode: string }) => Promise<string>
+        )({ mode: "readwrite" })) !== "granted"
       ) {
         setAutoSave(false);
         localStorage.setItem("apple-notes-auto-save", "off");
@@ -642,6 +741,11 @@ export default function Home() {
     const initAutoSave = async () => {
       const isAutoSaveOn =
         localStorage.getItem("apple-notes-auto-save") === "on";
+      const isGranted =
+        localStorage.getItem("apple-notes-auto-save-granted") === "true";
+
+      if (isAutoSaveOn) setAutoSave(true);
+      if (isGranted) setAutoSaveGranted(true);
       if (!isAutoSaveOn) return;
 
       const stored = await getStoredDirectoryHandle();
@@ -650,7 +754,11 @@ export default function Home() {
         setAutoSave(true);
         setAutoSaveGranted(true);
         try {
-          const perm = await (stored as unknown as { queryPermission?: (opts: { mode: string }) => Promise<string> }).queryPermission?.({ mode: "readwrite" });
+          const perm = await (
+            stored as unknown as {
+              queryPermission?: (opts: { mode: string }) => Promise<string>;
+            }
+          ).queryPermission?.({ mode: "readwrite" });
           if (perm === "granted") {
             await writeNotesToDirectory(exportDirectory.current, notes);
           }
@@ -668,7 +776,11 @@ export default function Home() {
     saveQueue.current = saveQueue.current
       .then(async () => {
         try {
-          const perm = await (dir as unknown as { queryPermission?: (opts: { mode: string }) => Promise<string> }).queryPermission?.({ mode: "readwrite" });
+          const perm = await (
+            dir as unknown as {
+              queryPermission?: (opts: { mode: string }) => Promise<string>;
+            }
+          ).queryPermission?.({ mode: "readwrite" });
           if (perm === "granted") {
             await writeNotesToDirectory(dir, notes);
           }
@@ -966,11 +1078,10 @@ export default function Home() {
         event.preventDefault();
         const span = liElement.querySelector("span");
         const rawText = (span ? span.textContent : liElement.textContent || "")
-          .replace(/\u200b/g, "")
-          .trim();
+          .replace(/[\u200b\s]/g, "");
 
-        if (!rawText || rawText === "New task" || rawText === "New item") {
-          // Exit checklist if Enter is pressed on an empty or default task item
+        if (!rawText) {
+          // Exit checklist if Enter is pressed on a completely empty item
           const parentUl = liElement.parentElement;
           liElement.remove();
           const p = document.createElement("p");
@@ -990,20 +1101,14 @@ export default function Home() {
         } else {
           // Add a new checklist item
           const newLi = document.createElement("li");
-          newLi.innerHTML =
-            '<input type="checkbox"> <span>New item</span>';
+          newLi.innerHTML = '<input type="checkbox"> <span><br></span>';
           liElement.after(newLi);
 
           const newSpan = newLi.querySelector("span");
           if (newSpan) {
             const newRange = document.createRange();
-            const textNode = newSpan.firstChild;
-            if (textNode) {
-              newRange.selectNodeContents(textNode);
-            } else {
-              newRange.setStart(newSpan, 0);
-              newRange.collapse(true);
-            }
+            newRange.setStart(newSpan, 0);
+            newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
           }
@@ -1031,7 +1136,7 @@ export default function Home() {
       document.execCommand(
         "insertHTML",
         false,
-        '<ul class="checklist"><li><input type="checkbox"> <span>New task</span></li></ul>',
+        '<ul class="checklist"><li><input type="checkbox"> <span><br></span></li></ul>',
       );
     else
       document.execCommand(
@@ -1136,7 +1241,128 @@ export default function Home() {
           if (folder)
             setConfirmDelete({ type: "folder", id, name: folder.name });
         }}
+        onImportFolder={() => folderInputRef.current?.click()}
+        onImportNotes={() => fileInputRef.current?.click()}
       />
+      <input
+        type="file"
+        ref={folderInputRef}
+        className="hidden"
+        {...({ webkitdirectory: "", directory: "" } as any)}
+        multiple
+        onChange={async (e) => {
+          const files = e.target.files;
+          if (!files || files.length === 0) return;
+
+          const importedFoldersSet = new Set<string>();
+          const importedNotes: Array<{
+            title: string;
+            subtitle?: string;
+            text: string;
+            folder: string;
+          }> = [];
+
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.name.startsWith(".")) continue;
+
+            const relPath = file.webkitRelativePath || file.name;
+            const parts = relPath.split(/[\/\\]/);
+
+            let folderName =
+              selectedFolder === "all"
+                ? "Ideas"
+                : folders.find((f) => f.id === selectedFolder)?.name || "Ideas";
+
+            if (parts.length > 2) {
+              folderName = parts[parts.length - 2];
+            } else if (parts.length === 2) {
+              folderName = parts[0];
+            }
+
+            if (folderName && folderName !== "all") {
+              importedFoldersSet.add(folderName);
+            }
+
+            try {
+              const rawText = await file.text();
+              const parsed = parseImportedContent(file.name, rawText);
+              importedNotes.push({
+                title: parsed.title,
+                subtitle: parsed.subtitle,
+                text: parsed.text,
+                folder: folderName,
+              });
+            } catch (err) {
+              console.warn("Failed to read imported file:", file.name, err);
+            }
+          }
+
+          if (importedNotes.length > 0) {
+            importBatch([...importedFoldersSet], importedNotes);
+            setToastMessage(
+              `Successfully imported ${importedNotes.length} note(s) and ${importedFoldersSet.size} folder(s)!`,
+            );
+            setTimeout(() => setToastMessage(null), 4000);
+          }
+          e.target.value = "";
+        }}
+      />
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept=".txt,.md,.json,.html"
+        multiple
+        onChange={async (e) => {
+          const files = e.target.files;
+          if (!files || files.length === 0) return;
+
+          const targetFolderName =
+            selectedFolder === "all"
+              ? "Ideas"
+              : folders.find((f) => f.id === selectedFolder)?.name || "Ideas";
+
+          const importedNotes: Array<{
+            title: string;
+            subtitle?: string;
+            text: string;
+            folder: string;
+          }> = [];
+
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.name.startsWith(".")) continue;
+
+            try {
+              const rawText = await file.text();
+              const parsed = parseImportedContent(file.name, rawText);
+              importedNotes.push({
+                title: parsed.title,
+                subtitle: parsed.subtitle,
+                text: parsed.text,
+                folder: targetFolderName,
+              });
+            } catch (err) {
+              console.warn("Failed to read imported file:", file.name, err);
+            }
+          }
+
+          if (importedNotes.length > 0) {
+            importBatch([], importedNotes);
+            setToastMessage(
+              `Successfully imported ${importedNotes.length} note(s)!`,
+            );
+            setTimeout(() => setToastMessage(null), 4000);
+          }
+          e.target.value = "";
+        }}
+      />
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-[var(--separator)] bg-[var(--surface)] px-4 py-2.5 text-xs font-medium text-[var(--text-primary)] shadow-2xl transition-all">
+          {toastMessage}
+        </div>
+      )}
       <section
         className={`editor-pane relative min-w-0 h-screen overflow-hidden bg-[var(--editor)] max-[767px]:fixed max-[767px]:inset-0 max-[767px]:z-40 max-[767px]:hidden ${mobileEditor ? "mobile-visible max-[767px]:block" : ""}`}
       >
