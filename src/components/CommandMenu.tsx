@@ -17,7 +17,7 @@ export function CommandMenu({
   onColor,
 }: {
   position: { top: number; left: number };
-  onList: (type: "bullet" | "number" | "check") => void;
+  onList: (type: "bullet" | "number" | "alphabet" | "check") => void;
   onBlock: (tag: "h1" | "h4" | "p") => void;
   onCommand: (name: string, value?: string) => void;
   onColor: (color: string) => void;
@@ -25,7 +25,7 @@ export function CommandMenu({
   const [showColors, setShowColors] = useState(false);
   return (
     <div
-      className="command-menu fixed z-20 flex w-fit flex-wrap items-center gap-1 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-2 shadow-xl"
+      className="command-menu fixed z-40 flex w-fit max-w-[92vw] flex-wrap items-center gap-1 rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-2 shadow-2xl"
       style={position}
     >
       <button
@@ -44,17 +44,17 @@ export function CommandMenu({
       </button>
 
       <button
-        className="rounded-lg p-2 hover:bg-black/[.06]"
+        className="rounded-lg p-2 hover:bg-black/[.06] text-xs font-bold"
         onClick={() => onBlock("h1")}
-        title="Title"
+        title="Title (H1)"
       >
         H1
       </button>
 
       <button
-        className="rounded-lg p-2 hover:bg-black/[.06]"
+        className="rounded-lg p-2 hover:bg-black/[.06] text-xs font-bold"
         onClick={() => onBlock("h4")}
-        title="Heading"
+        title="Heading (H4)"
       >
         H4
       </button>
@@ -73,6 +73,14 @@ export function CommandMenu({
         title="Numbered list"
       >
         <LuListOrdered />
+      </button>
+
+      <button
+        className="rounded-lg p-2 hover:bg-black/[.06] text-xs font-semibold px-2"
+        onClick={() => onList("alphabet")}
+        title="Alphabet list (a. b. c.)"
+      >
+        a.b.c
       </button>
 
       <button

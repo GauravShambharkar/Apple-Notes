@@ -39,12 +39,22 @@ export function useCaretSync(
       }
       savedSelection.current = selection.getRangeAt(0).cloneRange();
       const rect = selection.getRangeAt(0).getBoundingClientRect();
+      const menuWidth = 340;
+      const menuHeight = 44;
+      let top = rect.bottom + 8;
+      let left = rect.left;
+
+      if (top + menuHeight > window.innerHeight - 16) {
+        top = Math.max(16, rect.top - menuHeight - 8);
+      }
+      if (left + menuWidth > window.innerWidth - 16) {
+        left = window.innerWidth - menuWidth - 16;
+      }
+      left = Math.max(16, left);
+
       setCommandMenu(null);
       setSlashMode(false);
-      setSelectionMenu({
-        top: Math.min(window.innerHeight - 56, rect.bottom + 8),
-        left: Math.max(12, Math.min(window.innerWidth - 300, rect.left)),
-      });
+      setSelectionMenu({ top, left });
     };
     document.addEventListener("selectionchange", handleSelection);
     return () =>

@@ -42,7 +42,7 @@ export function Modals({
     >
       {folderDialog && (
         <form
-          className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
+          className="w-full max-w-[90vw] sm:max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
           onSubmit={(event) => {
             event.preventDefault();
             createFolder();
@@ -82,7 +82,7 @@ export function Modals({
 
       {renameDialog && (
         <form
-          className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
+          className="w-full max-w-[90vw] sm:max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
           onSubmit={(event) => {
             event.preventDefault();
             saveFolderRename();
@@ -118,7 +118,7 @@ export function Modals({
 
       {confirmDelete && (
         <div
-          className="w-full max-w-sm rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
+          className="w-full max-w-[90vw] sm:max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-2xl"
           onMouseDown={(event) => event.stopPropagation()}
         >
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">

@@ -108,17 +108,28 @@ export function EditorPane({
     updateSelected({ text: editor.innerHTML });
     const text = editor.textContent || "";
     if (text.endsWith("/")) {
-      const range = window.getSelection()?.getRangeAt(0);
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       if (range) {
         savedSelection.current = range.cloneRange();
         setSlashMode(true);
       }
       const rect =
         range?.getBoundingClientRect() || editor.getBoundingClientRect();
-      setCommandMenu({
-        top: rect.bottom + 8,
-        left: Math.max(16, Math.min(window.innerWidth - 240, rect.left)),
-      });
+      const menuWidth = 320;
+      const menuHeight = 44;
+      let top = rect.bottom + 8;
+      let left = rect.left;
+
+      if (top + menuHeight > window.innerHeight - 16) {
+        top = Math.max(16, rect.top - menuHeight - 8);
+      }
+      if (left + menuWidth > window.innerWidth - 16) {
+        left = window.innerWidth - menuWidth - 16;
+      }
+      left = Math.max(16, left);
+
+      setCommandMenu({ top, left });
     } else setCommandMenu(null);
   };
 
@@ -186,31 +197,145 @@ export function EditorPane({
           updateSelected({ text: editorRef.current.innerHTML });
         }
       }
+    } else if (event.key === "Backspace" || event.key === "Delete") {
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+
+      let node: Node | null = range.startContainer;
+      let liElement: HTMLLIElement | null = null;
+      while (node && node !== editorRef.current) {
+        if (
+          node.nodeName === "LI" &&
+          (node as HTMLElement).parentElement?.classList.contains("checklist")
+        ) {
+          liElement = node as HTMLLIElement;
+          break;
+        }
+        node = node.parentNode;
+      }
+
+      if (liElement) {
+        const span = liElement.querySelector("span");
+        const rawText = (
+          (span ? span.textContent : liElement.textContent) ?? ""
+        ).replace(/[\u200b\s]/g, "");
+
+        const isAtStart =
+          range.startOffset === 0 &&
+          (range.startContainer === span ||
+            range.startContainer === span?.firstChild ||
+            range.startContainer === liElement);
+
+        if (isAtStart || !rawText) {
+          event.preventDefault();
+          const parentUl = liElement.parentElement;
+          const prevLi =
+            liElement.previousElementSibling as HTMLLIElement | null;
+          const nextLi =
+            liElement.nextElementSibling as HTMLLIElement | null;
+
+          liElement.remove();
+
+          let targetSpan: HTMLSpanElement | null = null;
+          if (prevLi) {
+            targetSpan = prevLi.querySelector("span");
+          } else if (nextLi) {
+            targetSpan = nextLi.querySelector("span");
+          }
+
+          if (targetSpan) {
+            const newRange = document.createRange();
+            const childNode = targetSpan.firstChild || targetSpan;
+            const length =
+              childNode.nodeType === Node.TEXT_NODE
+                ? childNode.textContent?.length || 0
+                : 0;
+            newRange.setStart(childNode, length);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } else {
+            // Last item removed from checklist
+            const p = document.createElement("p");
+            p.innerHTML = "<br>";
+            if (parentUl && parentUl.children.length === 0) {
+              parentUl.replaceWith(p);
+            } else {
+              editorRef.current?.appendChild(p);
+            }
+            const newRange = document.createRange();
+            newRange.setStart(p, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
+
+          if (editorRef.current) {
+            updateSelected({ text: editorRef.current.innerHTML });
+          }
+        }
+      }
     }
   };
 
-  const insertList = (type: "bullet" | "number" | "check") => {
+  const insertList = (type: "bullet" | "number" | "alphabet" | "check") => {
     restoreSelection();
-    const range = window.getSelection()?.getRangeAt(0);
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+
     if (
       slashMode &&
-      range?.startContainer.nodeType === Node.TEXT_NODE &&
+      range.startContainer.nodeType === Node.TEXT_NODE &&
       range.startOffset > 0
     ) {
       range.setStart(range.startContainer, range.startOffset - 1);
       range.deleteContents();
     }
     setSlashMode(false);
-    if (type === "check")
-      document.execCommand(
-        "insertHTML",
-        false,
-        '<ul class="checklist"><li><input type="checkbox"> <span><br></span></li></ul>',
-      );
-    else
+
+    if (type === "alphabet") {
+      document.execCommand("insertOrderedList");
+      let anchor: Node | null = selection.anchorNode;
+      while (anchor && anchor !== editorRef.current) {
+        if (anchor.nodeName === "OL") {
+          (anchor as HTMLElement).classList.add("alphabet");
+          break;
+        }
+        anchor = anchor.parentNode;
+      }
+    } else if (type === "check") {
+      const selectedHtml = range.cloneContents();
+      const div = document.createElement("div");
+      div.appendChild(selectedHtml);
+      const selectedText = div.innerText || div.textContent || "";
+      const lines = selectedText
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      if (lines.length > 0) {
+        const checklistHtml = `<ul class="checklist">${lines
+          .map(
+            (line) =>
+              `<li><input type="checkbox"> <span>${line}</span></li>`,
+          )
+          .join("")}</ul>`;
+        document.execCommand("insertHTML", false, checklistHtml);
+      } else {
+        document.execCommand(
+          "insertHTML",
+          false,
+          '<ul class="checklist"><li><input type="checkbox"> <span><br></span></li></ul>',
+        );
+      }
+    } else {
       document.execCommand(
         type === "bullet" ? "insertUnorderedList" : "insertOrderedList",
       );
+    }
+
     if (editorRef.current)
       updateSelected({ text: editorRef.current.innerHTML });
     setCommandMenu(null);
@@ -237,6 +362,12 @@ export function EditorPane({
         onInput={(e) =>
           updateSelected({ title: e.currentTarget.textContent || "" })
         }
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            subtitleRef?.current?.focus();
+          }
+        }}
       />
       <div
         ref={subtitleRef}
@@ -249,10 +380,16 @@ export function EditorPane({
         onInput={(e) =>
           updateSelected({ subtitle: e.currentTarget.textContent || "" })
         }
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            editorRef.current?.focus();
+          }
+        }}
       />
       <div
         ref={editorRef}
-        className="editor-body outline-none"
+        className="editor-body editor-content min-h-[60vh] pb-[250px] outline-none"
         contentEditable
         suppressContentEditableWarning
         role="textbox"
