@@ -19,6 +19,7 @@ export function EditorPane({
   mobileEditor,
   setMobileEditor,
   autoSave,
+  folderPath,
   toggleAutoSave,
   theme,
   accent,
@@ -43,6 +44,7 @@ export function EditorPane({
   mobileEditor: boolean;
   setMobileEditor: (value: boolean) => void;
   autoSave: boolean;
+  folderPath?: string | null;
   toggleAutoSave: () => void;
   theme: Theme;
   accent: Accent;
@@ -421,10 +423,18 @@ export function EditorPane({
           )}
         </div>
         <div className="toolbar-right relative flex items-center gap-1">
-          <p className="text-[16px] text-black dark:text-white/30 flex items-center w-fit">
-            Auto save
+          <p className="text-[14px] font-medium text-black dark:text-white/40 flex items-center gap-1 w-fit">
+            <span className="truncate max-w-[160px] sm:max-w-[220px]" title={autoSave && folderPath ? `Save location: ${folderPath}` : "Auto save"}>
+              {autoSave && folderPath ? `📁 ${folderPath}` : "Auto save"}
+            </span>
             <IconButton
-              label={autoSave ? "Auto-save on" : "Turn auto-save on"}
+              label={
+                autoSave && folderPath
+                  ? `Saved to ${folderPath} (click to change)`
+                  : autoSave
+                    ? "Auto-save on"
+                    : "Turn auto-save on"
+              }
               onClick={toggleAutoSave}
               className={
                 autoSave

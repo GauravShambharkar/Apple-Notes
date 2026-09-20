@@ -15,6 +15,7 @@ export function useAutoSave() {
   const { notes, syncFromDisk } = useNotesStore();
   const [autoSave, setAutoSave] = useState(false);
   const [autoSaveGranted, setAutoSaveGranted] = useState(false);
+  const [folderPath, setFolderPath] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const exportDirectory = useRef<ExportDirectory | null>(null);
@@ -27,6 +28,7 @@ export function useAutoSave() {
       localStorage.setItem("apple-notes-auto-save", "off");
       localStorage.removeItem("apple-notes-auto-save-granted");
       setAutoSaveGranted(false);
+      setFolderPath(null);
       exportDirectory.current = null;
       await clearStoredDirectoryHandle();
       return;
@@ -47,6 +49,7 @@ export function useAutoSave() {
           )({ mode: "readwrite" })) === "granted"
         ) {
           exportDirectory.current = root;
+          setFolderPath(root.name || null);
           const { diskFolders, diskNotes } = await readNotesFromDirectory(root);
           if (diskNotes.length > 0 || diskFolders.length > 0) {
             syncFromDisk(diskFolders, diskNotes);
@@ -80,6 +83,7 @@ export function useAutoSave() {
     try {
       const root = await picker();
       exportDirectory.current = root;
+      setFolderPath(root.name || null);
       if (
         root.requestPermission &&
         (await (
@@ -90,6 +94,7 @@ export function useAutoSave() {
         localStorage.setItem("apple-notes-auto-save", "off");
         localStorage.removeItem("apple-notes-auto-save-granted");
         setAutoSaveGranted(false);
+        setFolderPath(null);
         return;
       }
       await saveDirectoryHandle(root as unknown as FileSystemDirectoryHandle);
@@ -104,6 +109,7 @@ export function useAutoSave() {
       localStorage.setItem("apple-notes-auto-save-granted", "true");
     } catch {
       exportDirectory.current = null;
+      setFolderPath(null);
       setAutoSave(false);
       localStorage.removeItem("apple-notes-auto-save");
       localStorage.removeItem("apple-notes-auto-save-granted");
@@ -128,7 +134,9 @@ export function useAutoSave() {
 
         const stored = await getStoredDirectoryHandle();
         if (stored) {
-          exportDirectory.current = stored as unknown as ExportDirectory;
+          const root = stored as unknown as ExportDirectory;
+          exportDirectory.current = root;
+          setFolderPath(root.name || null);
           try {
             const perm = await (
               stored as unknown as {
@@ -240,6 +248,7 @@ export function useAutoSave() {
   return {
     autoSave,
     autoSaveGranted,
+    folderPath,
     exporting,
     exportDirectory,
     toggleAutoSave,

@@ -40,7 +40,7 @@ export default function Home() {
     importBatch,
   } = useNotesStore();
 
-  const { autoSave, exportDirectory, toggleAutoSave } = useAutoSave();
+  const { autoSave, folderPath, exportDirectory, toggleAutoSave } = useAutoSave();
 
   const [query, setQuery] = useState("");
   const [mobileEditor, setMobileEditor] = useState(false);
@@ -399,6 +399,7 @@ export default function Home() {
         mobileEditor={mobileEditor}
         setMobileEditor={setMobileEditor}
         autoSave={autoSave}
+        folderPath={folderPath}
         toggleAutoSave={toggleAutoSave}
         theme={theme}
         accent={accent}

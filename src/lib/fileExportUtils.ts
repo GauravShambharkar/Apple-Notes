@@ -8,6 +8,7 @@ export type ExportFile = {
 };
 
 export type ExportDirectory = {
+  name?: string;
   getDirectoryHandle: (
     name: string,
     options?: { create?: boolean },
