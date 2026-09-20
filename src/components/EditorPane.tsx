@@ -389,7 +389,7 @@ export function EditorPane({
       />
       <div
         ref={editorRef}
-        className="editor-body editor-content min-h-[60vh] pb-[250px] outline-none"
+        className="editor-body editor-content min-h-[60vh] pb-[290px] mb-[40px] outline-none"
         contentEditable
         suppressContentEditableWarning
         role="textbox"
@@ -481,7 +481,7 @@ export function EditorPane({
         />
       )}
       <div className="editor-scroll h-[calc(100vh-var(--toolbar-height))] overflow-y-auto">
-        <article className="editor-document min-h-full w-full max-w-[840px] px-7 pb-24 pt-11 max-[767px]:px-5 max-[767px]:pt-7">
+        <article className="editor-document min-h-full w-full max-w-[840px] px-7 pb-[136px] pt-11 max-[767px]:px-5 max-[767px]:pt-7">
           {editor}
         </article>
       </div>
