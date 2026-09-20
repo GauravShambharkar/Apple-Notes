@@ -69,6 +69,36 @@ export function EditorPane({
 }) {
   const selectedId = selected?.id;
 
+  const flushCurrentContent = () => {
+    if (!selected) return;
+    const titleVal = titleRef.current?.textContent || "";
+    const subtitleVal = subtitleRef?.current?.textContent || "";
+    const textVal = editorRef.current?.innerHTML || "";
+
+    const patch: Partial<Note> = {};
+    if (titleVal !== selected.title) patch.title = titleVal;
+    if (subtitleVal !== (selected.subtitle || "")) patch.subtitle = subtitleVal;
+    if (textVal !== selected.text) patch.text = textVal;
+
+    if (Object.keys(patch).length > 0) {
+      updateSelected(patch);
+    }
+  };
+
+  useEffect(() => {
+    const handleFlush = () => {
+      flushCurrentContent();
+    };
+    window.addEventListener("beforeunload", handleFlush);
+    window.addEventListener("blur", handleFlush);
+    document.addEventListener("visibilitychange", handleFlush);
+    return () => {
+      window.removeEventListener("beforeunload", handleFlush);
+      window.removeEventListener("blur", handleFlush);
+      document.removeEventListener("visibilitychange", handleFlush);
+    };
+  }, [selectedId, selected?.title, selected?.subtitle, selected?.text]);
+
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (selected) {
@@ -364,6 +394,7 @@ export function EditorPane({
         onInput={(e) =>
           updateSelected({ title: e.currentTarget.textContent || "" })
         }
+        onBlur={flushCurrentContent}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -382,6 +413,7 @@ export function EditorPane({
         onInput={(e) =>
           updateSelected({ subtitle: e.currentTarget.textContent || "" })
         }
+        onBlur={flushCurrentContent}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -398,6 +430,7 @@ export function EditorPane({
         aria-label="Note body"
         data-placeholder="Start typing..."
         onInput={onInput}
+        onBlur={flushCurrentContent}
         onKeyDown={onEditorKeyDown}
       />
     </>
