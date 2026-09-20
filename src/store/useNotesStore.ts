@@ -22,6 +22,7 @@ export type Note = {
   pinned: boolean;
   folder: string;
   tags: string[];
+  fileName?: string;
 };
 export type Folder = {
   id: string;
@@ -65,6 +66,17 @@ type NotesState = {
       subtitle?: string;
       text: string;
       folder: string;
+    }>,
+  ) => void;
+  syncFromDisk: (
+    diskFolders: string[],
+    diskNotes: Array<{
+      title: string;
+      subtitle?: string;
+      text: string;
+      folder: string;
+      fileName?: string;
+      lastModified?: number;
     }>,
   ) => void;
 };
@@ -236,6 +248,96 @@ export const useNotesStore = create<NotesState>()(
           return {
             folders: newFolders,
             notes: updatedNotes,
+            selectedId: newSelectedId,
+          };
+        }),
+      syncFromDisk: (diskFolders, diskNotes) =>
+        set((state) => {
+          const newFolders = [...state.folders];
+          for (const folderName of diskFolders) {
+            const cleanName = folderName.trim();
+            if (
+              cleanName &&
+              !newFolders.some(
+                (f) => f.name.toLowerCase() === cleanName.toLowerCase(),
+              )
+            ) {
+              const newFolder: Folder = {
+                id: `${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${crypto.randomUUID().slice(0, 6)}`,
+                name: cleanName,
+                icon: "folder",
+              };
+              if (newFolders[0]?.id === "all") {
+                newFolders.splice(1, 0, newFolder);
+              } else {
+                newFolders.unshift(newFolder);
+              }
+            }
+          }
+
+          const currentNotes = [...state.notes];
+          const addedNotes: Note[] = [];
+          let hasStateChanges = false;
+
+          for (const diskNote of diskNotes) {
+            const diskTitle = (diskNote.title || "Untitled note").trim();
+            const diskFolder = (diskNote.folder || "Ideas").trim();
+
+            const existingIndex = currentNotes.findIndex(
+              (n) =>
+                (diskNote.fileName &&
+                  n.fileName === diskNote.fileName &&
+                  n.folder.trim().toLowerCase() === diskFolder.toLowerCase()) ||
+                (n.title.trim().toLowerCase() === diskTitle.toLowerCase() &&
+                  n.folder.trim().toLowerCase() === diskFolder.toLowerCase()),
+            );
+
+            if (existingIndex >= 0) {
+              const existingNote = currentNotes[existingIndex];
+              if (
+                diskNote.text &&
+                diskNote.text !== existingNote.text
+              ) {
+                hasStateChanges = true;
+                currentNotes[existingIndex] = {
+                  ...existingNote,
+                  subtitle:
+                    diskNote.subtitle || existingNote.subtitle,
+                  text: diskNote.text,
+                  updated: diskNote.lastModified || Date.now(),
+                  fileName: diskNote.fileName || existingNote.fileName,
+                };
+              }
+            } else {
+              hasStateChanges = true;
+              addedNotes.push({
+                id: crypto.randomUUID(),
+                title: diskTitle,
+                subtitle: diskNote.subtitle || "",
+                text: diskNote.text || "",
+                updated: diskNote.lastModified || Date.now(),
+                pinned: false,
+                folder: diskFolder,
+                tags: [],
+                fileName: diskNote.fileName,
+              });
+            }
+          }
+
+          if (!hasStateChanges && newFolders.length === state.folders.length) {
+            return state;
+          }
+
+          const mergedNotes = [...addedNotes, ...currentNotes];
+          const newSelectedId =
+            state.selectedId &&
+            mergedNotes.some((n) => n.id === state.selectedId)
+              ? state.selectedId
+              : mergedNotes[0]?.id || "";
+
+          return {
+            folders: newFolders,
+            notes: mergedNotes,
             selectedId: newSelectedId,
           };
         }),

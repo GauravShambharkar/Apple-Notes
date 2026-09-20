@@ -53,6 +53,23 @@ const accents: { name: Accent; color: string }[] = [
   { name: "white", color: "#ffffff" },
 ];
 
+function htmlToPlainText(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<div><br><\/div>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/\n\n+/g, "\n\n")
+    .trim();
+}
+
 function parseImportedContent(filename: string, rawText: string) {
   const baseName = filename.replace(/\.[^/.]+$/, "");
 
@@ -89,11 +106,11 @@ function parseImportedContent(filename: string, rawText: string) {
 
   if (nonEmpty.length > 0) {
     title = nonEmpty[0].replace(/^#+\s*/, "");
-    if (nonEmpty.length > 1) {
-      subtitle = nonEmpty[1].replace(/^#+\s*/, "");
-      bodyLines = lines.slice(lines.indexOf(nonEmpty[0]) + 1);
-    } else {
-      bodyLines = lines.slice(lines.indexOf(nonEmpty[0]) + 1);
+    const titleIndex = lines.indexOf(nonEmpty[0]);
+    bodyLines = lines.slice(titleIndex + 1);
+    const bodyNonEmpty = bodyLines.filter((l) => l.length > 0);
+    if (bodyNonEmpty.length > 0) {
+      subtitle = bodyNonEmpty[0].replace(/^#+\s*/, "");
     }
   }
 
@@ -148,60 +165,172 @@ type ExportDirectory = {
   requestPermission?: () => Promise<"granted" | "denied">;
 };
 type ExportManifest = { files: Record<string, string>; folders: string[] };
+
+async function getDirectoryEntries(
+  dirHandle: any,
+): Promise<Array<[string, any]>> {
+  const entries: Array<[string, any]> = [];
+  if (!dirHandle) return entries;
+
+  try {
+    if (typeof dirHandle.entries === "function") {
+      for await (const [name, handle] of dirHandle.entries()) {
+        entries.push([name, handle]);
+      }
+      return entries;
+    }
+  } catch {}
+
+  try {
+    if (typeof dirHandle[Symbol.asyncIterator] === "function") {
+      for await (const entry of dirHandle) {
+        if (Array.isArray(entry)) {
+          entries.push([entry[0], entry[1]]);
+        } else if (entry && entry.name) {
+          entries.push([entry.name, entry]);
+        }
+      }
+      return entries;
+    }
+  } catch {}
+
+  try {
+    if (typeof dirHandle.values === "function") {
+      for await (const handle of dirHandle.values()) {
+        if (handle && handle.name) {
+          entries.push([handle.name, handle]);
+        }
+      }
+      return entries;
+    }
+  } catch {}
+
+  return entries;
+}
+
+async function readNotesFromDirectory(root: ExportDirectory) {
+  const diskFolders: string[] = [];
+  const diskNotes: Array<{
+    title: string;
+    subtitle?: string;
+    text: string;
+    folder: string;
+    fileName?: string;
+    lastModified?: number;
+  }> = [];
+
+  const rootEntries = await getDirectoryEntries(root);
+
+  for (const [name, handle] of rootEntries) {
+    if (handle.kind === "directory") {
+      diskFolders.push(name);
+      const subEntries = await getDirectoryEntries(handle);
+      for (const [fileName, fileHandle] of subEntries) {
+        if (fileHandle.kind === "file") {
+          const lower = fileName.toLowerCase();
+          if (
+            lower.endsWith(".txt") ||
+            lower.endsWith(".md") ||
+            lower.endsWith(".json") ||
+            lower.endsWith(".html")
+          ) {
+            try {
+              const fileObj = await (
+                fileHandle as unknown as FileSystemFileHandle
+              ).getFile();
+              const rawText = await fileObj.text();
+              const parsed = parseImportedContent(fileName, rawText);
+              diskNotes.push({
+                title: parsed.title,
+                subtitle: parsed.subtitle,
+                text: parsed.text,
+                folder: name,
+                fileName: fileName,
+                lastModified: fileObj.lastModified,
+              });
+            } catch {}
+          }
+        }
+      }
+    } else if (handle.kind === "file") {
+      const lower = name.toLowerCase();
+      if (
+        lower.endsWith(".txt") ||
+        lower.endsWith(".md") ||
+        lower.endsWith(".json") ||
+        lower.endsWith(".html")
+      ) {
+        try {
+          const fileObj = await (
+            handle as unknown as FileSystemFileHandle
+          ).getFile();
+          const rawText = await fileObj.text();
+          const parsed = parseImportedContent(name, rawText);
+          diskNotes.push({
+            title: parsed.title,
+            subtitle: parsed.subtitle,
+            text: parsed.text,
+            folder: "Ideas",
+            fileName: name,
+            lastModified: fileObj.lastModified,
+          });
+        } catch {}
+      }
+    }
+  }
+
+  return { diskFolders, diskNotes };
+}
+
 async function writeNotesToDirectory(root: ExportDirectory, notes: Note[]) {
-  const previous: ExportManifest = JSON.parse(
-    localStorage.getItem("apple-notes-export-manifest") ||
-      '{"files":{},"folders":[]}',
-  );
+  if (!notes || notes.length === 0) {
+    return;
+  }
   const usedNames = new Map<string, number>();
   const files: Record<string, string> = {};
   const folders = new Set<string>();
+
   for (const note of notes) {
     const folder = safeFileName(note.folder, "Unfiled");
-    const baseName = safeFileName(note.title, "Untitled note");
-    const count = usedNames.get(`${folder}/${baseName}`) || 0;
-    usedNames.set(`${folder}/${baseName}`, count + 1);
-    const fileName = count ? `${baseName} (${count + 1})` : baseName;
-    const path = `${folder}/${fileName}.txt`;
+    let targetFileName = note.fileName;
+
+    if (!targetFileName) {
+      const baseName = safeFileName(note.title, "Untitled note");
+      const count = usedNames.get(`${folder}/${baseName}`) || 0;
+      usedNames.set(`${folder}/${baseName}`, count + 1);
+      targetFileName = count ? `${baseName} (${count + 1}).txt` : `${baseName}.txt`;
+      note.fileName = targetFileName;
+    }
+
+    const path = `${folder}/${targetFileName}`;
     files[note.id] = path;
     folders.add(folder);
-    const content = [
-      note.title || "Untitled note",
-      note.subtitle || "",
-      "",
-      plain(note.text),
-    ].join("\n");
-    const folderHandle = await root.getDirectoryHandle(folder, {
-      create: true,
-    });
-    const fileHandle = await folderHandle.getFileHandle(`${fileName}.txt`, {
-      create: true,
-    });
-    const writable = await fileHandle.createWritable();
-    await writable.write(content);
-    await writable.close();
-  }
-  const currentPaths = new Set(Object.values(files));
-  for (const oldPath of Object.values(previous.files)) {
-    // A deleted note can be replaced by a new note with the same path.
-    // Compare paths so cleanup never removes the replacement file.
-    if (currentPaths.has(oldPath)) continue;
-    const [folder, file] = oldPath.split("/");
-    try {
-      const folderHandle = await root.getDirectoryHandle(folder);
-      await folderHandle.removeEntry?.(file);
-    } catch {
-      /* The file may already be gone. */
+
+    const titleText = (note.title || "Untitled note").trim();
+    const bodyText = htmlToPlainText(note.text);
+
+    let content = titleText;
+    if (bodyText) {
+      if (bodyText.toLowerCase().startsWith(titleText.toLowerCase())) {
+        content = bodyText;
+      } else {
+        content = `${titleText}\n${bodyText}`;
+      }
     }
-  }
-  for (const folder of previous.folders) {
-    if (folders.has(folder)) continue;
+
     try {
-      await root.removeEntry?.(folder, { recursive: true });
-    } catch {
-      /* The folder may already be gone. */
-    }
+      const folderHandle = await root.getDirectoryHandle(folder, {
+        create: true,
+      });
+      const fileHandle = await folderHandle.getFileHandle(targetFileName, {
+        create: true,
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(content);
+      await writable.close();
+    } catch {}
   }
+
   localStorage.setItem(
     "apple-notes-export-manifest",
     JSON.stringify({ files, folders: [...folders] } satisfies ExportManifest),
@@ -610,6 +739,7 @@ export default function Home() {
     setAccent,
     setFont,
     importBatch,
+    syncFromDisk,
   } = useNotesStore();
   const [query, setQuery] = useState("");
   const [commandMenu, setCommandMenu] = useState<{
@@ -647,6 +777,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportDirectory = useRef<ExportDirectory | null>(null);
   const saveQueue = useRef(Promise.resolve());
+  const isInitializedRef = useRef(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const savedSelection = useRef<Range | null>(null);
   const [slashMode, setSlashMode] = useState(false);
@@ -678,7 +809,11 @@ export default function Home() {
           )({ mode: "readwrite" })) === "granted"
         ) {
           exportDirectory.current = root;
-          await writeNotesToDirectory(root, notes);
+          const { diskFolders, diskNotes } = await readNotesFromDirectory(root);
+          if (diskNotes.length > 0 || diskFolders.length > 0) {
+            syncFromDisk(diskFolders, diskNotes);
+          }
+          await writeNotesToDirectory(root, useNotesStore.getState().notes);
           setAutoSave(true);
           localStorage.setItem("apple-notes-auto-save", "on");
           setAutoSaveGranted(true);
@@ -720,7 +855,11 @@ export default function Home() {
         return;
       }
       await saveDirectoryHandle(root as unknown as FileSystemDirectoryHandle);
-      await writeNotesToDirectory(root, notes);
+      const { diskFolders, diskNotes } = await readNotesFromDirectory(root);
+      if (diskNotes.length > 0 || diskFolders.length > 0) {
+        syncFromDisk(diskFolders, diskNotes);
+      }
+      await writeNotesToDirectory(root, useNotesStore.getState().notes);
       setAutoSave(true);
       localStorage.setItem("apple-notes-auto-save", "on");
       setAutoSaveGranted(true);
@@ -739,37 +878,50 @@ export default function Home() {
   // Restore stored directory handle from IndexedDB on page load / new tab
   useEffect(() => {
     const initAutoSave = async () => {
-      const isAutoSaveOn =
-        localStorage.getItem("apple-notes-auto-save") === "on";
-      const isGranted =
-        localStorage.getItem("apple-notes-auto-save-granted") === "true";
+      try {
+        const isAutoSaveOn =
+          localStorage.getItem("apple-notes-auto-save") === "on";
+        const isGranted =
+          localStorage.getItem("apple-notes-auto-save-granted") === "true";
 
-      if (isAutoSaveOn) setAutoSave(true);
-      if (isGranted) setAutoSaveGranted(true);
-      if (!isAutoSaveOn) return;
+        if (isAutoSaveOn) setAutoSave(true);
+        if (isGranted) setAutoSaveGranted(true);
+        if (!isAutoSaveOn) return;
 
-      const stored = await getStoredDirectoryHandle();
-      if (stored) {
-        exportDirectory.current = stored as unknown as ExportDirectory;
-        setAutoSave(true);
-        setAutoSaveGranted(true);
-        try {
-          const perm = await (
-            stored as unknown as {
-              queryPermission?: (opts: { mode: string }) => Promise<string>;
+        const stored = await getStoredDirectoryHandle();
+        if (stored) {
+          exportDirectory.current = stored as unknown as ExportDirectory;
+          try {
+            const perm = await (
+              stored as unknown as {
+                queryPermission?: (opts: { mode: string }) => Promise<string>;
+              }
+            ).queryPermission?.({ mode: "readwrite" });
+            if (perm === "granted") {
+              setAutoSave(true);
+              setAutoSaveGranted(true);
+              const { diskFolders, diskNotes } =
+                await readNotesFromDirectory(exportDirectory.current);
+              if (diskNotes.length > 0 || diskFolders.length > 0) {
+                syncFromDisk(diskFolders, diskNotes);
+              }
+            } else {
+              setAutoSaveGranted(false);
             }
-          ).queryPermission?.({ mode: "readwrite" });
-          if (perm === "granted") {
-            await writeNotesToDirectory(exportDirectory.current, notes);
+          } catch {
+            setAutoSaveGranted(false);
           }
-        } catch {}
+        }
+      } finally {
+        isInitializedRef.current = true;
       }
     };
     initAutoSave();
-  }, []);
+  }, [syncFromDisk]);
 
   // Continuous auto-save to directory whenever notes state changes
   useEffect(() => {
+    if (!isInitializedRef.current) return;
     if (!autoSave || !exportDirectory.current) return;
     const dir = exportDirectory.current;
 
@@ -788,6 +940,42 @@ export default function Home() {
       })
       .catch(() => {});
   }, [notes, autoSave]);
+
+  // Auto-sync from directory when window regains focus or periodically when autoSave is active
+  useEffect(() => {
+    if (!autoSave) return;
+
+    const performSync = async () => {
+      if (!exportDirectory.current) return;
+      try {
+        const perm = await (
+          exportDirectory.current as unknown as {
+            queryPermission?: (opts: { mode: string }) => Promise<string>;
+          }
+        ).queryPermission?.({ mode: "readwrite" });
+        if (perm === "granted") {
+          const { diskFolders, diskNotes } = await readNotesFromDirectory(
+            exportDirectory.current,
+          );
+          if (diskNotes.length > 0 || diskFolders.length > 0) {
+            syncFromDisk(diskFolders, diskNotes);
+          }
+        }
+      } catch {}
+    };
+
+    const handleFocus = () => {
+      performSync();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    const interval = setInterval(performSync, 4000);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      clearInterval(interval);
+    };
+  }, [autoSave, syncFromDisk]);
 
   // Keep auto-save state synced across browser tabs
   useEffect(() => {
@@ -1004,10 +1192,34 @@ export default function Home() {
     setRenameDialog(null);
     setRenameFolderName("");
   };
-  const confirmDeletion = () => {
+  const confirmDeletion = async () => {
     if (!confirmDelete) return;
-    if (confirmDelete.type === "note") deleteNote(confirmDelete.id);
-    else deleteFolder(confirmDelete.id);
+    if (confirmDelete.type === "note") {
+      const noteToDelete = notes.find((n) => n.id === confirmDelete.id);
+      deleteNote(confirmDelete.id);
+      if (noteToDelete && exportDirectory.current) {
+        try {
+          const folder = safeFileName(noteToDelete.folder, "Unfiled");
+          const targetFileName =
+            noteToDelete.fileName ||
+            `${safeFileName(noteToDelete.title, "Untitled note")}.txt`;
+          const folderHandle =
+            await exportDirectory.current.getDirectoryHandle(folder);
+          await folderHandle.removeEntry?.(targetFileName);
+        } catch {}
+      }
+    } else {
+      const folderToDelete = folders.find((f) => f.id === confirmDelete.id);
+      deleteFolder(confirmDelete.id);
+      if (folderToDelete && exportDirectory.current) {
+        try {
+          const folder = safeFileName(folderToDelete.name, "Unfiled");
+          await exportDirectory.current.removeEntry?.(folder, {
+            recursive: true,
+          });
+        } catch {}
+      }
+    }
     setConfirmDelete(null);
     setMobileEditor(false);
   };
@@ -1077,8 +1289,9 @@ export default function Home() {
       if (liElement) {
         event.preventDefault();
         const span = liElement.querySelector("span");
-        const rawText = (span ? span.textContent : liElement.textContent || "")
-          .replace(/[\u200b\s]/g, "");
+        const rawText = (
+          (span ? span.textContent : liElement.textContent) ?? ""
+        ).replace(/[\u200b\s]/g, "");
 
         if (!rawText) {
           // Exit checklist if Enter is pressed on a completely empty item
