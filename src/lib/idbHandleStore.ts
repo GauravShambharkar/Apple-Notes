@@ -20,8 +20,9 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  let db: IDBDatabase | null = null;
   try {
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, "readwrite");
     const store = tx.objectStore(STORE_NAME);
     store.put(handle, KEY);
@@ -31,27 +32,33 @@ export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle): Pr
     });
   } catch (error) {
     console.warn("Could not save directory handle to IndexedDB:", error);
+  } finally {
+    db?.close();
   }
 }
 
 export async function getStoredDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  let db: IDBDatabase | null = null;
   try {
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, "readonly");
     const store = tx.objectStore(STORE_NAME);
     const request = store.get(KEY);
-    return new Promise((resolve) => {
+    return await new Promise((resolve) => {
       request.onsuccess = () => resolve((request.result as FileSystemDirectoryHandle) || null);
       request.onerror = () => resolve(null);
     });
   } catch {
     return null;
+  } finally {
+    db?.close();
   }
 }
 
 export async function clearStoredDirectoryHandle(): Promise<void> {
+  let db: IDBDatabase | null = null;
   try {
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, "readwrite");
     const store = tx.objectStore(STORE_NAME);
     store.delete(KEY);
@@ -60,5 +67,7 @@ export async function clearStoredDirectoryHandle(): Promise<void> {
     });
   } catch (error) {
     console.warn("Could not clear directory handle from IndexedDB:", error);
+  } finally {
+    db?.close();
   }
 }

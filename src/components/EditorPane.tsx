@@ -127,7 +127,16 @@ export function EditorPane({
       }
       setSlashMode(false);
     }
-    document.execCommand(name, false, value);
+    if (name === "formatBlock" && value) {
+      const tag = value.startsWith("<") ? value : `<${value}>`;
+      try {
+        document.execCommand(name, false, tag);
+      } catch {
+        document.execCommand(name, false, value);
+      }
+    } else {
+      document.execCommand(name, false, value);
+    }
     if (editorRef.current)
       updateSelected({ text: editorRef.current.innerHTML });
     setCommandMenu(null);
@@ -166,6 +175,69 @@ export function EditorPane({
   };
 
   const onEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === " " || event.code === "Space") {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
+        const range = selection.getRangeAt(0);
+        const container = range.startContainer;
+        if (container.nodeType === Node.TEXT_NODE) {
+          const textBefore =
+            container.nodeValue?.slice(0, range.startOffset) || "";
+          let triggerType:
+            | "bullet"
+            | "number"
+            | "alphabet"
+            | "check"
+            | "h1"
+            | "h4"
+            | null = null;
+          let prefixLength = 0;
+
+          if (textBefore === "*" || textBefore === "-") {
+            triggerType = "bullet";
+            prefixLength = textBefore.length;
+          } else if (/^(1\.|1\))$/.test(textBefore)) {
+            triggerType = "number";
+            prefixLength = textBefore.length;
+          } else if (/^(a\.|a\))$/i.test(textBefore)) {
+            triggerType = "alphabet";
+            prefixLength = textBefore.length;
+          } else if (textBefore === "[]" || textBefore === "[ ]") {
+            triggerType = "check";
+            prefixLength = textBefore.length;
+          } else if (textBefore === "#") {
+            triggerType = "h1";
+            prefixLength = textBefore.length;
+          } else if (textBefore === "###" || textBefore === "####") {
+            triggerType = "h4";
+            prefixLength = textBefore.length;
+          }
+
+          if (triggerType) {
+            event.preventDefault();
+            const fullText = container.nodeValue || "";
+            container.nodeValue = fullText.slice(prefixLength);
+
+            const newRange = document.createRange();
+            newRange.setStart(container, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+
+            if (triggerType === "h1" || triggerType === "h4") {
+              document.execCommand("formatBlock", false, triggerType);
+            } else {
+              insertList(triggerType);
+            }
+            if (editorRef.current) {
+              updateSelected({ text: editorRef.current.innerHTML });
+            }
+            return;
+          }
+        }
+      }
+    }
+
     if (event.key === "Enter") {
       const selection = window.getSelection();
       if (!selection || !selection.rangeCount) return;

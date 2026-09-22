@@ -165,6 +165,8 @@ export function useAutoSave() {
     initAutoSave();
   }, [syncFromDisk]);
 
+  const isSyncingRef = useRef(false);
+
   // Continuous auto-save to directory whenever notes state changes
   useEffect(() => {
     if (!isInitializedRef.current) return;
@@ -180,7 +182,7 @@ export function useAutoSave() {
             }
           ).queryPermission?.({ mode: "readwrite" });
           if (perm === "granted") {
-            await writeNotesToDirectory(dir, notes);
+            await writeNotesToDirectory(dir, useNotesStore.getState().notes);
           }
         } catch {}
       })
@@ -192,7 +194,8 @@ export function useAutoSave() {
     if (!autoSave) return;
 
     const performSync = async () => {
-      if (!exportDirectory.current) return;
+      if (!exportDirectory.current || isSyncingRef.current) return;
+      isSyncingRef.current = true;
       try {
         const perm = await (
           exportDirectory.current as unknown as {
@@ -207,7 +210,9 @@ export function useAutoSave() {
             syncFromDisk(diskFolders, diskNotes);
           }
         }
-      } catch {}
+      } catch {} finally {
+        isSyncingRef.current = false;
+      }
     };
 
     const handleFocus = () => {

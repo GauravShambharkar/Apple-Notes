@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LuChevronDown,
   LuEllipsisVertical,
@@ -59,6 +59,15 @@ export function NoteList({
   const [view, setView] = useState<"notes" | "folders">("notes");
   const [folderMenu, setFolderMenu] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setImportOpen(false);
+      setFolderMenu(null);
+    };
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, []);
 
   return (
     <section className="notes-panel flex h-screen w-[320px] shrink-0 flex-col overflow-hidden border-r border-[var(--separator)] bg-[var(--background)]">

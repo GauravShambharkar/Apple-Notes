@@ -339,7 +339,7 @@ export async function writeNotesToDirectory(
   root: ExportDirectory,
   notes: Note[],
 ) {
-  if (!notes || notes.length === 0) {
+  if (!root || !notes || notes.length === 0) {
     return;
   }
   const usedNames = new Map<string, number>();
@@ -348,25 +348,33 @@ export async function writeNotesToDirectory(
 
   for (const note of notes) {
     const folder = safeFileName(note.folder, "Unfiled");
-    let targetFileName = note.fileName;
-
-    if (!targetFileName) {
-      const baseName = safeFileName(note.title, "Untitled note");
-      const count = usedNames.get(`${folder}/${baseName}`) || 0;
-      usedNames.set(`${folder}/${baseName}`, count + 1);
-      targetFileName = count
-        ? `${baseName} (${count + 1}).txt`
-        : `${baseName}.txt`;
-      note.fileName = targetFileName;
-    }
-
-    const path = `${folder}/${targetFileName}`;
-    files[note.id] = path;
     folders.add(folder);
 
     const titleText = (note.title || "Untitled note").trim();
-    const bodyText = htmlToPlainText(note.text);
+    const baseName = safeFileName(titleText, "Untitled note");
+    const key = `${folder.toLowerCase()}/${baseName.toLowerCase()}`;
 
+    const count = usedNames.get(key) || 0;
+    usedNames.set(key, count + 1);
+
+    const newTargetFileName =
+      count > 0 ? `${baseName} (${count + 1}).txt` : `${baseName}.txt`;
+
+    const oldFileName = note.fileName;
+    if (oldFileName && oldFileName.toLowerCase() !== newTargetFileName.toLowerCase()) {
+      try {
+        const folderHandle = await root.getDirectoryHandle(folder, {
+          create: true,
+        });
+        await folderHandle.removeEntry?.(oldFileName);
+      } catch {}
+    }
+
+    note.fileName = newTargetFileName;
+    const path = `${folder}/${newTargetFileName}`;
+    files[note.id] = path;
+
+    const bodyText = htmlToPlainText(note.text);
     let content = titleText;
     if (bodyText) {
       if (bodyText.toLowerCase().startsWith(titleText.toLowerCase())) {
@@ -380,7 +388,7 @@ export async function writeNotesToDirectory(
       const folderHandle = await root.getDirectoryHandle(folder, {
         create: true,
       });
-      const fileHandle = await folderHandle.getFileHandle(targetFileName, {
+      const fileHandle = await folderHandle.getFileHandle(newTargetFileName, {
         create: true,
       });
       const writable = await fileHandle.createWritable();
