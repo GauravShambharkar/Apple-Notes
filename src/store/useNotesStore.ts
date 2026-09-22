@@ -294,13 +294,20 @@ export const useNotesStore = create<NotesState>()(
 
             if (existingIndex >= 0) {
               const existingNote = currentNotes[existingIndex];
+              const isDiskNewer =
+                !existingNote.updated ||
+                (diskNote.lastModified &&
+                  diskNote.lastModified > existingNote.updated);
               const isTitleChanged = diskTitle !== existingNote.title.trim();
               const isSubtitleChanged =
                 (diskNote.subtitle || "") !== (existingNote.subtitle || "");
               const isTextChanged =
                 !!diskNote.text && diskNote.text !== existingNote.text;
 
-              if (isTitleChanged || isSubtitleChanged || isTextChanged) {
+              if (
+                isDiskNewer &&
+                (isTitleChanged || isSubtitleChanged || isTextChanged)
+              ) {
                 hasStateChanges = true;
                 currentNotes[existingIndex] = {
                   ...existingNote,

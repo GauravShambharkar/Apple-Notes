@@ -62,14 +62,32 @@ export function parseImportedContent(filename: string, rawText: string) {
     } catch {}
   }
 
-  if (
+  const isHtmlFile =
     filename.toLowerCase().endsWith(".html") ||
-    filename.toLowerCase().endsWith(".htm")
-  ) {
+    filename.toLowerCase().endsWith(".htm") ||
+    /<(p|div|h[1-6]|ul|ol|li|span|font|input|table|br)\b[^>]*>/i.test(rawText);
+
+  if (isHtmlFile) {
+    let title = baseName;
+    let textBody = rawText;
+
+    const h1Match = textBody.match(/^<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    if (h1Match) {
+      title = h1Match[1].replace(/<[^>]+>/g, "").trim() || baseName;
+      textBody = textBody.slice(h1Match[0].length);
+    }
+
+    let subtitle = "";
+    const h2Match = textBody.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/i);
+    if (h2Match) {
+      subtitle = h2Match[1].replace(/<[^>]+>/g, "").trim();
+      textBody = textBody.slice(h2Match[0].length);
+    }
+
     return {
-      title: baseName,
-      subtitle: "",
-      text: rawText,
+      title,
+      subtitle,
+      text: textBody,
     };
   }
 
@@ -81,12 +99,16 @@ export function parseImportedContent(filename: string, rawText: string) {
   let bodyLines = lines;
 
   if (nonEmpty.length > 0) {
-    title = nonEmpty[0].replace(/^#+\s*/, "");
-    const titleIndex = lines.indexOf(nonEmpty[0]);
-    bodyLines = lines.slice(titleIndex + 1);
-    const bodyNonEmpty = bodyLines.filter((l) => l.length > 0);
-    if (bodyNonEmpty.length > 0) {
-      subtitle = bodyNonEmpty[0].replace(/^#+\s*/, "");
+    if (nonEmpty[0].startsWith("# ")) {
+      title = nonEmpty[0].replace(/^#\s*/, "");
+      const titleIndex = lines.indexOf(nonEmpty[0]);
+      bodyLines = lines.slice(titleIndex + 1);
+    }
+
+    // Only extract subtitle if it explicitly uses ## Subtitle syntax
+    if (bodyLines.length > 0 && bodyLines[0].startsWith("## ")) {
+      subtitle = bodyLines[0].replace(/^##\s*/, "");
+      bodyLines = bodyLines.slice(1);
     }
   }
 
@@ -374,14 +396,14 @@ export async function writeNotesToDirectory(
     const path = `${folder}/${newTargetFileName}`;
     files[note.id] = path;
 
-    const bodyText = htmlToPlainText(note.text);
-    let content = titleText;
-    if (bodyText) {
-      if (bodyText.toLowerCase().startsWith(titleText.toLowerCase())) {
-        content = bodyText;
-      } else {
-        content = `${titleText}\n${bodyText}`;
-      }
+    let content = `<h1>${titleText}</h1>`;
+    if (note.subtitle) {
+      content += `<h2>${note.subtitle}</h2>`;
+    }
+    if (note.text) {
+      content += note.text;
+    } else {
+      content += "<p><br></p>";
     }
 
     try {

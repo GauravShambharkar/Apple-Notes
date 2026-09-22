@@ -101,9 +101,10 @@ export function EditorPane({
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
+    flushCurrentContent();
     if (selected) {
-      if (editorRef.current) editorRef.current.innerHTML = selected.text;
-      if (titleRef.current) titleRef.current.textContent = selected.title;
+      if (editorRef.current) editorRef.current.innerHTML = selected.text || "";
+      if (titleRef.current) titleRef.current.textContent = selected.title || "";
       if (subtitleRef?.current)
         subtitleRef.current.textContent = selected.subtitle || "";
     } else {
