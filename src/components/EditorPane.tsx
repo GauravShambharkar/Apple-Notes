@@ -190,7 +190,8 @@ export function EditorPane({
             | "alphabet"
             | "check"
             | "h1"
-            | "h4"
+            | "h5"
+            | "h6"
             | null = null;
           let prefixLength = 0;
 
@@ -209,8 +210,15 @@ export function EditorPane({
           } else if (textBefore === "#") {
             triggerType = "h1";
             prefixLength = textBefore.length;
-          } else if (textBefore === "###" || textBefore === "####") {
-            triggerType = "h4";
+          } else if (textBefore === "##" || textBefore === "###") {
+            triggerType = "h5";
+            prefixLength = textBefore.length;
+          } else if (
+            textBefore === "####" ||
+            textBefore === "#####" ||
+            textBefore === "######"
+          ) {
+            triggerType = "h6";
             prefixLength = textBefore.length;
           }
 
@@ -225,8 +233,12 @@ export function EditorPane({
             selection.removeAllRanges();
             selection.addRange(newRange);
 
-            if (triggerType === "h1" || triggerType === "h4") {
-              document.execCommand("formatBlock", false, triggerType);
+            if (
+              triggerType === "h1" ||
+              triggerType === "h5" ||
+              triggerType === "h6"
+            ) {
+              command("formatBlock", triggerType);
             } else {
               insertList(triggerType);
             }

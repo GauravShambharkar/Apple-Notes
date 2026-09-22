@@ -18,7 +18,7 @@ export function CommandMenu({
 }: {
   position: { top: number; left: number };
   onList: (type: "bullet" | "number" | "alphabet" | "check") => void;
-  onBlock: (tag: "h1" | "h4" | "p") => void;
+  onBlock: (tag: "h1" | "h5" | "h6" | "p") => void;
   onCommand: (name: string, value?: string) => void;
   onColor: (color: string) => void;
 }) {
@@ -53,10 +53,18 @@ export function CommandMenu({
 
       <button
         className="rounded-lg p-2 hover:bg-black/[.06] text-xs font-bold"
-        onClick={() => onBlock("h4")}
-        title="Heading (H4)"
+        onClick={() => onBlock("h5")}
+        title="Heading (H5)"
       >
-        H4
+        H5
+      </button>
+
+      <button
+        className="rounded-lg p-2 hover:bg-black/[.06] text-xs font-bold"
+        onClick={() => onBlock("h6")}
+        title="Subheading (H6)"
+      >
+        H6
       </button>
 
       <button
