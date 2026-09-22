@@ -40,14 +40,21 @@ export function useAutoSave() {
     if (stored) {
       try {
         const root = stored as unknown as ExportDirectory;
-        if (
-          root.requestPermission &&
-          (await (
-            root.requestPermission as (opts?: {
-              mode: string;
-            }) => Promise<string>
-          )({ mode: "readwrite" })) === "granted"
-        ) {
+        let perm = await (
+          root as unknown as {
+            queryPermission?: (opts: { mode: string }) => Promise<string>;
+          }
+        ).queryPermission?.({ mode: "readwrite" });
+
+        if (perm === "prompt") {
+          perm = await (
+            root as unknown as {
+              requestPermission?: (opts: { mode: string }) => Promise<string>;
+            }
+          ).requestPermission?.({ mode: "readwrite" });
+        }
+
+        if (perm === "granted") {
           exportDirectory.current = root;
           setFolderPath(root.name || null);
           const { diskFolders, diskNotes } = await readNotesFromDirectory(root);
@@ -137,6 +144,7 @@ export function useAutoSave() {
           const root = stored as unknown as ExportDirectory;
           exportDirectory.current = root;
           setFolderPath(root.name || null);
+          setAutoSave(true);
           try {
             const perm = await (
               stored as unknown as {
@@ -144,19 +152,15 @@ export function useAutoSave() {
               }
             ).queryPermission?.({ mode: "readwrite" });
             if (perm === "granted") {
-              setAutoSave(true);
               setAutoSaveGranted(true);
               const { diskFolders, diskNotes } =
                 await readNotesFromDirectory(exportDirectory.current);
               if (diskNotes.length > 0 || diskFolders.length > 0) {
                 syncFromDisk(diskFolders, diskNotes);
               }
-            } else {
-              setAutoSaveGranted(false);
+              await writeNotesToDirectory(root, useNotesStore.getState().notes);
             }
-          } catch {
-            setAutoSaveGranted(false);
-          }
+          } catch {}
         }
       } finally {
         isInitializedRef.current = true;
@@ -164,6 +168,49 @@ export function useAutoSave() {
     };
     initAutoSave();
   }, [syncFromDisk]);
+
+  // Automatically request/grant readwrite permission on first user gesture if browser reset to "prompt"
+  useEffect(() => {
+    const tryGrantPermissionOnGesture = async () => {
+      if (!exportDirectory.current || !autoSave) return;
+      try {
+        const root = exportDirectory.current;
+        let perm = await (
+          root as unknown as {
+            queryPermission?: (opts: { mode: string }) => Promise<string>;
+          }
+        ).queryPermission?.({ mode: "readwrite" });
+
+        if (perm === "prompt") {
+          perm = await (
+            root as unknown as {
+              requestPermission?: (opts: { mode: string }) => Promise<string>;
+            }
+          ).requestPermission?.({ mode: "readwrite" });
+        }
+
+        if (perm === "granted") {
+          setAutoSaveGranted(true);
+          const { diskFolders, diskNotes } = await readNotesFromDirectory(root);
+          if (diskNotes.length > 0 || diskFolders.length > 0) {
+            syncFromDisk(diskFolders, diskNotes);
+          }
+          await writeNotesToDirectory(root, useNotesStore.getState().notes);
+        }
+      } catch {}
+    };
+
+    window.addEventListener("pointerdown", tryGrantPermissionOnGesture, {
+      once: true,
+    });
+    window.addEventListener("keydown", tryGrantPermissionOnGesture, {
+      once: true,
+    });
+    return () => {
+      window.removeEventListener("pointerdown", tryGrantPermissionOnGesture);
+      window.removeEventListener("keydown", tryGrantPermissionOnGesture);
+    };
+  }, [autoSave, syncFromDisk]);
 
   const isSyncingRef = useRef(false);
 
