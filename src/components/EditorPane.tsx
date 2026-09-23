@@ -8,7 +8,7 @@ import {
   LuShare2,
   LuTrash2,
 } from "react-icons/lu";
-import type { Accent, Note, Theme } from "@/store/useNotesStore";
+import { useNotesStore, type Accent, type Note, type Theme } from "@/store/useNotesStore";
 import { dateLabel } from "@/lib/fileExportUtils";
 import { IconButton } from "@/components/IconButton";
 import { ThemeMenu } from "@/components/ThemeMenu";
@@ -48,14 +48,14 @@ export function EditorPane({
   toggleAutoSave: () => void;
   theme: Theme;
   accent: Accent;
-  setTheme: (theme: Theme) => void;
-  setAccent: (accent: Accent) => void;
+  setTheme: (value: Theme) => void;
+  setAccent: (value: Accent) => void;
   updateSelected: (patch: Partial<Note>) => void;
   setConfirmDelete: (
     value: { type: "note" | "folder"; id: string; name: string } | null,
   ) => void;
   titleRef: React.RefObject<HTMLHeadingElement | null>;
-  subtitleRef?: React.RefObject<HTMLDivElement | null>;
+  subtitleRef: React.RefObject<HTMLDivElement | null>;
   editorRef: React.RefObject<HTMLDivElement | null>;
   caretBar: { top: number; left: number; height: number } | null;
   commandMenu: { top: number; left: number } | null;
@@ -68,26 +68,33 @@ export function EditorPane({
   restoreSelection: () => void;
 }) {
   const selectedId = selected?.id;
+  const lastEditingIdRef = useRef<string | null>(selected?.id || null);
 
-  const flushCurrentContent = () => {
-    if (!selected) return;
+  const flushCurrentContent = (targetNoteId?: unknown) => {
+    const targetId = typeof targetNoteId === "string" ? targetNoteId : (lastEditingIdRef.current || selected?.id);
+    if (!targetId) return;
+
     const titleVal = titleRef.current?.textContent || "";
     const subtitleVal = subtitleRef?.current?.textContent || "";
     const textVal = editorRef.current?.innerHTML || "";
 
+    const currentNotes = useNotesStore.getState().notes;
+    const targetNote = currentNotes.find((n: Note) => n.id === targetId);
+    if (!targetNote) return;
+
     const patch: Partial<Note> = {};
-    if (titleVal !== selected.title) patch.title = titleVal;
-    if (subtitleVal !== (selected.subtitle || "")) patch.subtitle = subtitleVal;
-    if (textVal !== selected.text) patch.text = textVal;
+    if (titleVal !== targetNote.title) patch.title = titleVal;
+    if (subtitleVal !== (targetNote.subtitle || "")) patch.subtitle = subtitleVal;
+    if (textVal !== targetNote.text) patch.text = textVal;
 
     if (Object.keys(patch).length > 0) {
-      updateSelected(patch);
+      useNotesStore.getState().updateNote(targetId, patch);
     }
   };
 
   useEffect(() => {
     const handleFlush = () => {
-      flushCurrentContent();
+      flushCurrentContent(lastEditingIdRef.current);
     };
     window.addEventListener("beforeunload", handleFlush);
     window.addEventListener("blur", handleFlush);
@@ -97,11 +104,14 @@ export function EditorPane({
       window.removeEventListener("blur", handleFlush);
       document.removeEventListener("visibilitychange", handleFlush);
     };
-  }, [selectedId, selected?.title, selected?.subtitle, selected?.text]);
+  }, []);
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
-    flushCurrentContent();
+    if (lastEditingIdRef.current && lastEditingIdRef.current !== selectedId) {
+      flushCurrentContent(lastEditingIdRef.current);
+    }
+
     if (selected) {
       if (editorRef.current) editorRef.current.innerHTML = selected.text || "";
       if (titleRef.current) titleRef.current.textContent = selected.title || "";
@@ -112,6 +122,8 @@ export function EditorPane({
       if (titleRef.current) titleRef.current.textContent = "";
       if (subtitleRef?.current) subtitleRef.current.textContent = "";
     }
+
+    lastEditingIdRef.current = selectedId || null;
   }, [selectedId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
