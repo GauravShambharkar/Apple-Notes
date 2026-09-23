@@ -36,13 +36,17 @@ export function htmlToPlainText(html: string): string {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n")
     .replace(/<\/div>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n")
     .replace(/<\/li>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "• ")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&")
-    .replace(/\n\n+/g, "\n\n")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\r?\n\s*\r?\n/g, "\n\n")
     .trim();
 }
 
@@ -396,14 +400,20 @@ export async function writeNotesToDirectory(
     const path = `${folder}/${newTargetFileName}`;
     files[note.id] = path;
 
-    let content = `<h1>${titleText}</h1>`;
-    if (note.subtitle) {
-      content += `<h2>${note.subtitle}</h2>`;
+    const cleanTitleHeader = titleText.startsWith("# ")
+      ? titleText
+      : `# ${titleText}`;
+    let content = cleanTitleHeader;
+    if (note.subtitle && note.subtitle.trim()) {
+      const cleanSub = note.subtitle.trim();
+      const cleanSubHeader = cleanSub.startsWith("## ")
+        ? cleanSub
+        : `## ${cleanSub}`;
+      content += `\n${cleanSubHeader}`;
     }
-    if (note.text) {
-      content += note.text;
-    } else {
-      content += "<p><br></p>";
+    const plainBody = htmlToPlainText(note.text || "");
+    if (plainBody) {
+      content += `\n\n${plainBody}`;
     }
 
     try {

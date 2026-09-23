@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { htmlToPlainText } from "@/lib/fileExportUtils";
 
 export type Theme = "light" | "dark" | "system";
 export type Accent =
@@ -301,8 +302,10 @@ export const useNotesStore = create<NotesState>()(
               const isTitleChanged = diskTitle !== existingNote.title.trim();
               const isSubtitleChanged =
                 (diskNote.subtitle || "") !== (existingNote.subtitle || "");
+              const diskPlain = htmlToPlainText(diskNote.text || "");
+              const existingPlain = htmlToPlainText(existingNote.text || "");
               const isTextChanged =
-                !!diskNote.text && diskNote.text !== existingNote.text;
+                !!diskNote.text && diskPlain !== existingPlain;
 
               if (
                 isDiskNewer &&
