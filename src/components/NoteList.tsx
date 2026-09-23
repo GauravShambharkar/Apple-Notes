@@ -165,7 +165,14 @@ export function NoteList({
       <div className="note-list min-h-0 flex-1 overflow-y-auto p-2" role="list">
         {view === "folders"
           ? [...folders]
-              .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+              .sort((a, b) => {
+                if (a.id === "all") return -1;
+                if (b.id === "all") return 1;
+                const aPinned = Boolean(a.pinned);
+                const bPinned = Boolean(b.pinned);
+                if (aPinned !== bPinned) return aPinned ? -1 : 1;
+                return a.name.localeCompare(b.name);
+              })
               .map((folder) => (
                 <button
                   key={folder.id}

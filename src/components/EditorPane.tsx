@@ -344,18 +344,53 @@ export function EditorPane({
           selection.removeAllRanges();
           selection.addRange(newRange);
         } else {
-          // Add a new checklist item
-          const newLi = document.createElement("li");
-          newLi.innerHTML = '<input type="checkbox"> <span><br></span>';
-          liElement.after(newLi);
+          let headText = "";
+          let tailText = "";
 
-          const newSpan = newLi.querySelector("span");
-          if (newSpan) {
-            const newRange = document.createRange();
-            newRange.setStart(newSpan, 0);
-            newRange.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(newRange);
+          if (span && range) {
+            const fullText = span.textContent || "";
+            let cursorOffset = fullText.length;
+            if (
+              range.startContainer === span.firstChild &&
+              range.startContainer.nodeType === Node.TEXT_NODE
+            ) {
+              cursorOffset = range.startOffset;
+            } else if (range.startContainer === span) {
+              cursorOffset = range.startOffset;
+            }
+
+            headText = fullText.slice(0, cursorOffset);
+            tailText = fullText.slice(cursorOffset);
+          }
+
+          if (span && tailText.length > 0 && headText.length > 0) {
+            span.textContent = headText;
+            const newLi = document.createElement("li");
+            newLi.innerHTML = `<input type="checkbox"> <span>${tailText}</span>`;
+            liElement.after(newLi);
+
+            const newSpan = newLi.querySelector("span");
+            if (newSpan) {
+              const newRange = document.createRange();
+              const child = newSpan.firstChild || newSpan;
+              newRange.setStart(child, 0);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            }
+          } else {
+            const newLi = document.createElement("li");
+            newLi.innerHTML = '<input type="checkbox"> <span><br></span>';
+            liElement.after(newLi);
+
+            const newSpan = newLi.querySelector("span");
+            if (newSpan) {
+              const newRange = document.createRange();
+              newRange.setStart(newSpan, 0);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            }
           }
         }
 
@@ -509,6 +544,25 @@ export function EditorPane({
     editorRef.current?.focus();
   };
 
+  const handleEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (
+      target &&
+      target.tagName === "INPUT" &&
+      (target as HTMLInputElement).type === "checkbox"
+    ) {
+      const checkbox = target as HTMLInputElement;
+      if (checkbox.checked) {
+        checkbox.setAttribute("checked", "checked");
+      } else {
+        checkbox.removeAttribute("checked");
+      }
+      if (editorRef.current) {
+        updateSelected({ text: editorRef.current.innerHTML });
+      }
+    }
+  };
+
   const editor = selected ? (
     <>
       <div className="editor-meta flex min-h-[18px] items-center gap-3 text-xs text-[var(--text-tertiary)]">
@@ -564,6 +618,7 @@ export function EditorPane({
         aria-label="Note body"
         data-placeholder="Start typing..."
         onInput={onInput}
+        onClick={handleEditorClick}
         onBlur={flushCurrentContent}
         onKeyDown={onEditorKeyDown}
       />

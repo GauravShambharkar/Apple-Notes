@@ -400,7 +400,10 @@ export async function writeNotesToDirectory(
       count > 0 ? `${baseName} (${count + 1}).txt` : `${baseName}.txt`;
 
     const oldFileName = note.fileName;
-    if (oldFileName && oldFileName.toLowerCase() !== newTargetFileName.toLowerCase()) {
+    if (
+      oldFileName &&
+      oldFileName.toLowerCase() !== newTargetFileName.toLowerCase()
+    ) {
       try {
         const folderHandle = await root.getDirectoryHandle(folder, {
           create: true,
