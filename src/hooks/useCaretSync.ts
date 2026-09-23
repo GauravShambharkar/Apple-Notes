@@ -99,22 +99,19 @@ export function useCaretSync(
       }
 
       if (!measured && selection.anchorNode) {
-        try {
-          const marker = document.createElement("span");
-          marker.appendChild(document.createTextNode("\u200b"));
-          const clonedRange = range.cloneRange();
-          clonedRange.insertNode(marker);
-          const markerRect = marker.getBoundingClientRect();
-          if (markerRect && markerRect.top > 0) {
-            top = markerRect.top;
-            left = markerRect.left;
-            if (markerRect.height > 0) height = markerRect.height;
+        const elem =
+          selection.anchorNode.nodeType === Node.ELEMENT_NODE
+            ? (selection.anchorNode as HTMLElement)
+            : selection.anchorNode.parentElement;
+        if (elem) {
+          const r = elem.getBoundingClientRect();
+          if (r && r.top > 0) {
+            top = r.top;
+            left = r.left;
+            if (r.height > 0) height = r.height;
             measured = true;
           }
-          marker.parentNode?.removeChild(marker);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        } catch {}
+        }
       }
 
       if (!measured && host) {
