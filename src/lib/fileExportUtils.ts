@@ -32,6 +32,8 @@ export type ExportManifest = {
 export function htmlToPlainText(html: string): string {
   if (!html) return "";
   return html
+    .replace(/<input[^>]*type="checkbox"[^>]*checked[^>]*>/gi, "[x] ")
+    .replace(/<input[^>]*type="checkbox"[^>]*>/gi, "[ ] ")
     .replace(/<div><br><\/div>/gi, "\n")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n")
@@ -117,7 +119,18 @@ export function parseImportedContent(filename: string, rawText: string) {
   }
 
   const htmlText = bodyLines
-    .map((line) => (line ? `<p>${line}</p>` : "<p><br></p>"))
+    .map((line) => {
+      if (!line) return "<p><br></p>";
+      if (/^\[x\]\s*/i.test(line)) {
+        const text = line.replace(/^\[x\]\s*/i, "");
+        return `<ul class="checklist"><li><input type="checkbox" checked> <span>${text}</span></li></ul>`;
+      }
+      if (/^\[ \]\s*/i.test(line)) {
+        const text = line.replace(/^\[ \]\s*/i, "");
+        return `<ul class="checklist"><li><input type="checkbox"> <span>${text}</span></li></ul>`;
+      }
+      return `<p>${line}</p>`;
+    })
     .join("");
 
   return {

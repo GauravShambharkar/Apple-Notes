@@ -182,27 +182,59 @@ button {
   line-height: 1.35;
 }
 
+/* Multi-level Unordered Lists */
 .editor-content ul:not(.checklist),
 .editor-body ul:not(.checklist) {
   list-style-type: disc !important;
   list-style-position: outside !important;
   padding-left: 1.75rem !important;
-  margin: 0.5rem 0 0.75rem !important;
+  margin: 0.35rem 0 0.5rem !important;
 }
 
+.editor-content ul:not(.checklist) ul:not(.checklist),
+.editor-body ul:not(.checklist) ul:not(.checklist),
+.editor-content ol ul:not(.checklist),
+.editor-body ol ul:not(.checklist) {
+  list-style-type: circle !important;
+  margin: 0.25rem 0 0.25rem !important;
+}
+
+.editor-content ul:not(.checklist) ul:not(.checklist) ul:not(.checklist),
+.editor-body ul:not(.checklist) ul:not(.checklist) ul:not(.checklist),
+.editor-content ol ol ul:not(.checklist),
+.editor-body ol ol ul:not(.checklist) {
+  list-style-type: square !important;
+}
+
+/* Multi-level Ordered Lists */
 .editor-content ol,
 .editor-body ol {
   list-style-type: decimal !important;
   list-style-position: outside !important;
   padding-left: 1.75rem !important;
-  margin: 0.5rem 0 0.75rem !important;
+  margin: 0.35rem 0 0.5rem !important;
 }
 
 .editor-content ol ol,
 .editor-body ol ol,
 .editor-content ol.alphabet,
-.editor-body ol.alphabet {
+.editor-body ol.alphabet,
+.editor-content ul:not(.checklist) ol,
+.editor-body ul:not(.checklist) ol {
   list-style-type: lower-alpha !important;
+  margin: 0.25rem 0 0.25rem !important;
+}
+
+.editor-content ol ol ol,
+.editor-body ol ol ol,
+.editor-content ul:not(.checklist) ol ol,
+.editor-body ul:not(.checklist) ol ol {
+  list-style-type: lower-roman !important;
+}
+
+.editor-content ol ol ol ol,
+.editor-body ol ol ol ol {
+  list-style-type: upper-alpha !important;
 }
 
 .editor-content li,
@@ -229,10 +261,24 @@ button {
   font-size: 14px;
 }
 
+/* Checklists - Base & Nested */
 .editor-content .checklist,
 .editor-body .checklist {
   padding-left: 0 !important;
-  margin: 8px 0 !important;
+  margin: 6px 0 !important;
+  list-style: none !important;
+}
+
+.editor-content li .checklist,
+.editor-body li .checklist,
+.editor-content .checklist .checklist,
+.editor-body .checklist .checklist,
+.editor-content ol .checklist,
+.editor-body ol .checklist,
+.editor-content ul .checklist,
+.editor-body ul .checklist {
+  padding-left: 1.5rem !important;
+  margin: 4px 0 !important;
   list-style: none !important;
 }
 

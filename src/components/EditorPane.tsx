@@ -188,6 +188,43 @@ export function EditorPane({
   };
 
   const onEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) return;
+
+      if (event.shiftKey) {
+        document.execCommand("outdent");
+      } else {
+        document.execCommand("indent");
+      }
+
+      if (editorRef.current) {
+        const uls = editorRef.current.querySelectorAll("ul");
+        uls.forEach((ul) => {
+          if (
+            ul.querySelector('input[type="checkbox"]') &&
+            !ul.classList.contains("checklist")
+          ) {
+            ul.classList.add("checklist");
+          }
+        });
+
+        const ols = editorRef.current.querySelectorAll("ol");
+        ols.forEach((ol) => {
+          if (
+            ol.parentElement?.closest("ol.alphabet") &&
+            !ol.classList.contains("alphabet")
+          ) {
+            ol.classList.add("alphabet");
+          }
+        });
+
+        updateSelected({ text: editorRef.current.innerHTML });
+      }
+      return;
+    }
+
     if (event.key === " " || event.code === "Space") {
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
@@ -213,7 +250,7 @@ export function EditorPane({
           } else if (/^(1\.|1\))$/.test(textBefore)) {
             triggerType = "number";
             prefixLength = textBefore.length;
-          } else if (/^(a\.|a\))$/i.test(textBefore)) {
+          } else if (/^([a-z]\.|[a-z]\))$/i.test(textBefore)) {
             triggerType = "alphabet";
             prefixLength = textBefore.length;
           } else if (textBefore === "[]" || textBefore === "[ ]") {
