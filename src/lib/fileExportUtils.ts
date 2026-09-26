@@ -404,12 +404,15 @@ export async function writeNotesToDirectory(
       oldFileName &&
       oldFileName.toLowerCase() !== newTargetFileName.toLowerCase()
     ) {
+      addDeletedManifest(oldFileName.toLowerCase());
+      addDeletedManifest(`${folder.toLowerCase()}/${oldFileName.toLowerCase()}`);
       try {
         const folderHandle = await root.getDirectoryHandle(folder, {
           create: true,
         });
         await folderHandle.removeEntry?.(oldFileName);
       } catch {}
+      removeNoteFileFromDisk(root, folder, oldFileName, note.title);
     }
 
     note.fileName = newTargetFileName;

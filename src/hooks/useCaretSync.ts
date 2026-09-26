@@ -82,35 +82,90 @@ export function useCaretSync(
           : editorRef.current;
       const range = selection.getRangeAt(0);
 
+      const anchorNode = selection.anchorNode;
+      const anchorElem = (
+        anchorNode.nodeType === Node.ELEMENT_NODE
+          ? anchorNode
+          : anchorNode.parentElement
+      ) as HTMLElement | null;
+
+      if (!anchorElem) {
+        setCaretBar(null);
+        return;
+      }
+
+      const style = window.getComputedStyle(anchorElem);
+      const fontSize = parseFloat(style.fontSize) || 16;
+      
+      const targetCaretHeight = inTitle
+        ? 38
+        : inSubtitle
+          ? 22
+          : Math.min(Math.max(Math.round(fontSize * 1.2), 18), 34);
+
+      const minCaretHeight = inTitle ? 30 : inSubtitle ? 18 : 16;
+      const maxCaretHeight = inTitle ? 44 : inSubtitle ? 26 : 36;
+
       let top = 0;
       let left = 0;
-      let height = 24;
+      let height = targetCaretHeight;
       let measured = false;
 
-      const rects = range.getClientRects();
-      if (rects.length > 0) {
-        const rangeRect = rects[0];
-        if (rangeRect && rangeRect.top > 0) {
-          top = rangeRect.top;
-          left = rangeRect.left;
-          height = rangeRect.height;
-          measured = true;
+      // 1. Try precise character measurement on text nodes using cloned sub-range
+      if (anchorNode.nodeType === Node.TEXT_NODE && anchorNode.nodeValue) {
+        const textVal = anchorNode.nodeValue;
+        const offset = selection.anchorOffset;
+        const subRange = document.createRange();
+
+        if (offset > 0) {
+          subRange.setStart(anchorNode, offset - 1);
+          subRange.setEnd(anchorNode, offset);
+          const r = subRange.getBoundingClientRect();
+          if (r && r.height > 0 && r.top > 0) {
+            top = r.top;
+            left = r.right;
+            height = r.height;
+            measured = true;
+          }
+        } else if (textVal.length > 0) {
+          subRange.setStart(anchorNode, 0);
+          subRange.setEnd(anchorNode, 1);
+          const r = subRange.getBoundingClientRect();
+          if (r && r.height > 0 && r.top > 0) {
+            top = r.top;
+            left = r.left;
+            height = r.height;
+            measured = true;
+          }
         }
       }
 
-      if (!measured && selection.anchorNode) {
-        const elem =
-          selection.anchorNode.nodeType === Node.ELEMENT_NODE
-            ? (selection.anchorNode as HTMLElement)
-            : selection.anchorNode.parentElement;
-        if (elem) {
-          const r = elem.getBoundingClientRect();
-          if (r && r.top > 0) {
-            top = r.top;
-            left = r.left;
-            if (r.height > 0) height = r.height;
+      // 2. Fallback to range.getClientRects() if single character measurement wasn't possible
+      if (!measured) {
+        const rects = range.getClientRects();
+        if (rects.length > 0) {
+          const rangeRect = rects[0];
+          if (rangeRect && rangeRect.top > 0) {
+            top = rangeRect.top;
+            left = rangeRect.left;
+            height = rangeRect.height;
             measured = true;
           }
+        }
+      }
+
+      // 3. Fallback for empty block elements/containers
+      if (!measured) {
+        const r = anchorElem.getBoundingClientRect();
+        if (r && r.top > 0) {
+          const paddingTop = parseFloat(style.paddingTop) || 0;
+          const paddingLeft = parseFloat(style.paddingLeft) || 0;
+          const borderTop = parseFloat(style.borderTopWidth) || 0;
+          const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+
+          top = r.top + paddingTop + borderTop;
+          left = r.left + paddingLeft + borderLeft;
+          measured = true;
         }
       }
 
@@ -120,7 +175,13 @@ export function useCaretSync(
         left = fallback.left;
       }
 
-      setCaretBar({ top, left, height });
+      // Strictly bound caret height to current field font dimensions
+      const finalHeight =
+        measured && height >= minCaretHeight && height <= maxCaretHeight
+          ? Math.round(height)
+          : targetCaretHeight;
+
+      setCaretBar({ top, left, height: finalHeight });
     };
 
     document.addEventListener("selectionchange", syncCaret);
