@@ -197,6 +197,30 @@ export function NoteList({
                       <LuPin />
                     </span>
                   )}
+                  {(() => {
+                    const count =
+                      folder.id === "all"
+                        ? allNotes.length
+                        : allNotes.filter(
+                            (note) =>
+                              note.folder.toLowerCase() ===
+                              folder.name.toLowerCase(),
+                          ).length;
+
+                    if (count <= 0) return null;
+
+                    return (
+                      <span
+                        className={`count inline-flex items-center justify-center min-w-[20px] h-5 rounded-full px-2 text-[11px] font-semibold transition-colors ${
+                          selectedFolder === folder.id
+                            ? "bg-[var(--accent)] text-white"
+                            : "bg-[var(--surface)] text-[var(--text-secondary)]"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    );
+                  })()}
                   {folder.id !== "all" && (
                     <span
                       className="relative grid h-7 w-7 place-items-center rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
@@ -237,15 +261,7 @@ export function NoteList({
                       )}
                     </span>
                   )}
-                  <span className="count rounded-full bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--text-tertiary)]">
-                    {folder.id === "all"
-                      ? allNotes.length
-                      : allNotes.filter(
-                          (note) =>
-                            note.folder.toLowerCase() ===
-                            folder.name.toLowerCase(),
-                        ).length}
-                  </span>
+                  
                 </button>
               ))
           : notes.map((note) => (
