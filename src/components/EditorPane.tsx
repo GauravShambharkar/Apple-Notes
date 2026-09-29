@@ -127,6 +127,103 @@ export function EditorPane({
   }, [selectedId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
+  const formatBlockHeader = (tag: "h1" | "h5" | "h6" | "p") => {
+    restoreSelection();
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+
+    if (
+      slashMode &&
+      range.startContainer.nodeType === Node.TEXT_NODE &&
+      range.startOffset > 0
+    ) {
+      range.setStart(range.startContainer, range.startOffset - 1);
+      range.deleteContents();
+    }
+    setSlashMode(false);
+
+    let node: Node | null = range.startContainer;
+    let liElement: HTMLLIElement | null = null;
+    while (node && node !== editorRef.current) {
+      if (node.nodeName === "LI") {
+        liElement = node as HTMLLIElement;
+        break;
+      }
+      node = node.parentNode;
+    }
+
+    if (liElement) {
+      const parentList = liElement.parentElement;
+      const span = liElement.querySelector("span");
+      const innerHtml = span ? span.innerHTML : liElement.innerHTML;
+      const cleanHtml = innerHtml
+        .replace(/<input[^>]*type="checkbox"[^>]*>/gi, "")
+        .trim();
+
+      const newBlock = document.createElement(tag);
+      newBlock.innerHTML = cleanHtml || "<br>";
+
+      if (parentList) {
+        const prevLis: Element[] = [];
+        const nextLis: Element[] = [];
+        let found = false;
+
+        Array.from(parentList.children).forEach((child) => {
+          if (child === liElement) {
+            found = true;
+          } else if (!found) {
+            prevLis.push(child);
+          } else {
+            nextLis.push(child);
+          }
+        });
+
+        if (prevLis.length === 0 && nextLis.length === 0) {
+          parentList.replaceWith(newBlock);
+        } else if (prevLis.length === 0) {
+          parentList.before(newBlock);
+          liElement.remove();
+        } else if (nextLis.length === 0) {
+          parentList.after(newBlock);
+          liElement.remove();
+        } else {
+          const nextList = parentList.cloneNode(false) as HTMLElement;
+          nextLis.forEach((child) => nextList.appendChild(child));
+          liElement.remove();
+          parentList.after(newBlock);
+          newBlock.after(nextList);
+        }
+      } else {
+        liElement.replaceWith(newBlock);
+      }
+
+      const newRange = document.createRange();
+      const child = newBlock.firstChild || newBlock;
+      newRange.setStart(
+        child,
+        child.nodeType === Node.TEXT_NODE ? child.textContent?.length || 0 : 0,
+      );
+      newRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    } else {
+      const tagStr = tag.startsWith("<") ? tag : `<${tag}>`;
+      try {
+        document.execCommand("formatBlock", false, tagStr);
+      } catch {
+        document.execCommand("formatBlock", false, tag);
+      }
+    }
+
+    if (editorRef.current) {
+      updateSelected({ text: editorRef.current.innerHTML });
+    }
+    setCommandMenu(null);
+    setSelectionMenu(null);
+    editorRef.current?.focus();
+  };
+
   const command = (name: string, value?: string) => {
     restoreSelection();
     if (slashMode) {
@@ -141,12 +238,8 @@ export function EditorPane({
       setSlashMode(false);
     }
     if (name === "formatBlock" && value) {
-      const tag = value.startsWith("<") ? value : `<${value}>`;
-      try {
-        document.execCommand(name, false, tag);
-      } catch {
-        document.execCommand(name, false, value);
-      }
+      formatBlockHeader(value as "h1" | "h5" | "h6" | "p");
+      return;
     } else {
       document.execCommand(name, false, value);
     }
@@ -160,31 +253,38 @@ export function EditorPane({
   const onInput = (event: FormEvent<HTMLDivElement>) => {
     const editor = event.currentTarget;
     updateSelected({ text: editor.innerHTML });
-    const text = editor.textContent || "";
-    if (text.endsWith("/")) {
-      const selection = window.getSelection();
-      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-      if (range) {
-        savedSelection.current = range.cloneRange();
-        setSlashMode(true);
-      }
-      const rect =
-        range?.getBoundingClientRect() || editor.getBoundingClientRect();
-      const menuWidth = 320;
-      const menuHeight = 44;
-      let top = rect.bottom + 8;
-      let left = rect.left;
 
-      if (top + menuHeight > window.innerHeight - 16) {
-        top = Math.max(16, rect.top - menuHeight - 8);
-      }
-      if (left + menuWidth > window.innerWidth - 16) {
-        left = window.innerWidth - menuWidth - 16;
-      }
-      left = Math.max(16, left);
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const container = range.startContainer;
+      if (container.nodeType === Node.TEXT_NODE) {
+        const textBefore =
+          container.nodeValue?.slice(0, range.startOffset) || "";
+        if (textBefore.endsWith("/")) {
+          savedSelection.current = range.cloneRange();
+          setSlashMode(true);
 
-      setCommandMenu({ top, left });
-    } else setCommandMenu(null);
+          const rect = range.getBoundingClientRect();
+          const menuWidth = 320;
+          const menuHeight = 44;
+          let top = rect.bottom + 8;
+          let left = rect.left;
+
+          if (top + menuHeight > window.innerHeight - 16) {
+            top = Math.max(16, rect.top - menuHeight - 8);
+          }
+          if (left + menuWidth > window.innerWidth - 16) {
+            left = window.innerWidth - menuWidth - 16;
+          }
+          left = Math.max(16, left);
+
+          setCommandMenu({ top, left });
+          return;
+        }
+      }
+    }
+    setCommandMenu(null);
   };
 
   const onEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -721,7 +821,7 @@ export function EditorPane({
         <CommandMenu
           position={commandMenu}
           onList={insertList}
-          onBlock={(tag) => command("formatBlock", tag)}
+          onBlock={formatBlockHeader}
           onCommand={command}
           onColor={(color) => command("foreColor", color)}
         />
@@ -730,7 +830,7 @@ export function EditorPane({
         <CommandMenu
           position={selectionMenu}
           onList={insertList}
-          onBlock={(tag) => command("formatBlock", tag)}
+          onBlock={formatBlockHeader}
           onCommand={command}
           onColor={(color) => command("foreColor", color)}
         />
